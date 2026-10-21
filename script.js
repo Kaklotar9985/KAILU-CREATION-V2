@@ -496,26 +496,80 @@ document.addEventListener("keydown", event => {
   }
 });
 
-let lightboxPhotos = [];
+// Full-screen viewer sequence contains all valid product photos and, when
+// available, the product video as the final gallery item.
+let lightboxItems = [];
 let lightboxIndex = 0;
+let lightboxCard = null;
+
+function stopLightboxVideo() {
+  const video = $("#photoLightboxVideo");
+  if (!video) return;
+  video.pause();
+  video.hidden = true;
+  video.removeAttribute("src");
+  video.load();
+}
+
+function showLightboxItem(index) {
+  if (!lightboxItems.length) return;
+  lightboxIndex = (index + lightboxItems.length) % lightboxItems.length;
+  const item = lightboxItems[lightboxIndex];
+  const img = $("#photoLightboxImage");
+  const video = $("#photoLightboxVideo");
+
+  if (item.type === "video") {
+    img.hidden = true;
+    video.hidden = false;
+    video.pause();
+    video.src = item.src;
+    video.muted = true;
+    video.defaultMuted = true;
+    video.playsInline = true;
+    // load() resets playback to the beginning when switching between gallery items.
+    video.load();
+    // Video automatically starts silently when reached with Next/Previous.
+    const playAttempt = video.play();
+    if (playAttempt && typeof playAttempt.catch === "function") {
+      playAttempt.catch(() => {
+        // Native controls remain available if autoplay is blocked by the browser.
+      });
+    }
+  } else {
+    stopLightboxVideo();
+    video.muted = true;
+    video.defaultMuted = true;
+    img.hidden = false;
+    img.src = item.src;
+    img.alt = item.alt || "Catalog full screen photo";
+  }
+}
 
 function openPhotoLightbox(card, clickedSrc) {
-  const img = $("#photoLightboxImage");
-  lightboxPhotos = [...card.querySelectorAll(".gallery-thumb")]
-    .map(button => button.dataset.src)
-    .filter(Boolean);
-  if (!lightboxPhotos.length) lightboxPhotos = [clickedSrc];
-  lightboxIndex = Math.max(0, lightboxPhotos.indexOf(clickedSrc));
-  img.src = lightboxPhotos[lightboxIndex] || clickedSrc;
+  lightboxCard = card;
+  lightboxItems = [...card.querySelectorAll("[data-gallery-photo][data-src]")]
+    .map(button => ({ type: "photo", src: button.dataset.src, alt: button.getAttribute("aria-label") || "Catalog photo" }))
+    .filter(item => Boolean(item.src));
+
+  const videoThumb = card.querySelector("[data-gallery-video]");
+  const cardVideo = card.querySelector("[data-main-video]");
+  // A video is added to the full-screen sequence only after it is confirmed available.
+  if (videoThumb && !videoThumb.hidden && cardVideo && cardVideo.currentSrc && cardVideo.networkState !== HTMLMediaElement.NETWORK_NO_SOURCE) {
+    lightboxItems.push({ type: "video", src: cardVideo.currentSrc, alt: "Product video" });
+  }
+  if (!lightboxItems.length) lightboxItems = [{ type: "photo", src: clickedSrc, alt: "Catalog photo" }];
+
+  const clickedUrl = new URL(clickedSrc, document.baseURI).href;
+  const matchedIndex = lightboxItems.findIndex(item => item.type === "photo" && new URL(item.src, document.baseURI).href === clickedUrl);
+  showLightboxItem(matchedIndex >= 0 ? matchedIndex : 0);
   $("#photoLightbox").hidden = false;
   document.body.classList.add("photo-viewer-open");
   pushKailuUiHistory("photo");
 }
 
 function moveLightboxPhoto(delta) {
-  if (!lightboxPhotos.length) return;
-  lightboxIndex = (lightboxIndex + delta + lightboxPhotos.length) % lightboxPhotos.length;
-  $("#photoLightboxImage").src = lightboxPhotos[lightboxIndex];
+  if (!lightboxItems.length) return;
+  showLightboxItem(lightboxIndex + delta);
 }
 
 productGrid.addEventListener("click", event => {
@@ -584,6 +638,12 @@ function closePhotoLightbox(options = {}) {
   const photoLightbox = $("#photoLightbox");
   const wasOpen = photoLightbox && !photoLightbox.hidden;
   if (photoLightbox) photoLightbox.hidden = true;
+  stopLightboxVideo();
+  const lightboxImage = $("#photoLightboxImage");
+  if (lightboxImage) lightboxImage.hidden = false;
+  lightboxItems = [];
+  lightboxIndex = 0;
+  lightboxCard = null;
   document.body.classList.remove("photo-viewer-open");
   if (wasOpen && !options.fromPopstate && history.state && history.state.kailuUI === "photo") {
     history.back();
