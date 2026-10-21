@@ -1405,3 +1405,16 @@ body { background:#fff; color:var(--ink); }
   .mrp-label { font-size:7px; border-left:0; padding-left:0; }
   .discount-badge { font-size:7px; min-height:20px; padding:0 4px; }
 }
+
+
+/* Keep the gallery Next control visible and clickable above the video layer. */
+.product-image .gallery-next {
+  z-index: 6;
+  pointer-events: auto;
+}
+.product-image .catalog-video {
+  z-index: 2;
+}
+.product-image .product-tag {
+  z-index: 4;
+}

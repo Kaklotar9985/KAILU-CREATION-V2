@@ -69,7 +69,7 @@ function renderProducts() {
       <div class="product-image" style="background:${product.color}">
         ${product.tag ? `<span class="product-tag">${escapeHtml(product.tag)}</span>` : ""}
         <img class="catalog-photo" src="${product.image}" alt="${escapeHtml(product.name)}">
-        <video class="catalog-video" data-main-video="${product.id}" controls preload="metadata" playsinline aria-label="${escapeHtml(product.name)} product video" hidden></video>
+        <video class="catalog-video" data-main-video="${product.id}" controls muted preload="metadata" playsinline aria-label="${escapeHtml(product.name)} product video" hidden></video>
         <button class="gallery-next" type="button" aria-label="Next photo or video" data-gallery-next="${product.id}" hidden>›</button>
       </div>
       <div class="product-gallery" data-gallery="${product.id}">
@@ -123,6 +123,9 @@ function renderProducts() {
     const mainPhoto = card.querySelector(".catalog-photo");
     const video = card.querySelector("[data-main-video]");
     const videoThumb = card.querySelector("[data-gallery-video]");
+    // Product videos start silently. Customers can enable sound with the native speaker control.
+    video.muted = true;
+    video.defaultMuted = true;
     video.src = product.video;
     video.addEventListener("error", () => {
       video.pause();
@@ -531,6 +534,8 @@ productGrid.addEventListener("click", event => {
     const video = card.querySelector("[data-main-video]");
     video.pause();
     video.currentTime = 0;
+    video.muted = true;
+    video.defaultMuted = true;
     video.hidden = true;
     main.hidden = false;
     main.src = photoButton.dataset.src;
@@ -543,6 +548,9 @@ productGrid.addEventListener("click", event => {
     const video = card.querySelector("[data-main-video]");
     main.hidden = true;
     video.hidden = false;
+    // Always start the product video muted; the visible speaker control can enable sound.
+    video.muted = true;
+    video.defaultMuted = true;
     card.querySelectorAll(".gallery-thumb").forEach(thumb => thumb.classList.toggle("active", thumb === videoButton));
     video.play().catch(() => {
       showToast("Tap the play button on the video to start playback.");
