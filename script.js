@@ -68,7 +68,7 @@ function renderProducts() {
     card.innerHTML = `
       <div class="product-image" style="background:${product.color}">
         ${product.tag ? `<span class="product-tag">${escapeHtml(product.tag)}</span>` : ""}
-        <img class="catalog-photo" src="${product.image}" alt="${escapeHtml(product.name)}">
+        <img class="catalog-photo" src="${product.image}" alt="${escapeHtml(product.name)}" role="button" tabindex="0" aria-label="Open full-size photo: ${escapeHtml(product.name)}" draggable="false">
         <video class="catalog-video" data-main-video="${product.id}" controls muted preload="metadata" playsinline aria-label="${escapeHtml(product.name)} product video" hidden></video>
         <button class="gallery-next" type="button" aria-label="Next photo or video" data-gallery-next="${product.id}" hidden>›</button>
       </div>
@@ -572,10 +572,41 @@ function moveLightboxPhoto(delta) {
   showLightboxItem(lightboxIndex + delta);
 }
 
+// Mobile tap fallback: open the full-screen viewer from a deliberate touch
+// without mistaking a swipe/scroll gesture for a photo tap. The following
+// synthetic click is ignored so one tap cannot open the viewer twice.
+let photoTouchStart = null;
+let lastTouchPhotoOpenedAt = 0;
+productGrid.addEventListener("pointerdown", event => {
+  const target = event.target instanceof Element ? event.target : event.target?.parentElement;
+  const photo = target && target.closest(".catalog-photo");
+  if (event.pointerType === "touch" && photo && !photo.hidden) {
+    photoTouchStart = { photo, x: event.clientX, y: event.clientY };
+  } else if (event.pointerType === "touch") {
+    photoTouchStart = null;
+  }
+}, { passive: true });
+
+productGrid.addEventListener("pointerup", event => {
+  if (event.pointerType !== "touch" || !photoTouchStart) return;
+  const start = photoTouchStart;
+  photoTouchStart = null;
+  const target = event.target instanceof Element ? event.target : event.target?.parentElement;
+  const photo = target && target.closest(".catalog-photo");
+  const moved = Math.hypot(event.clientX - start.x, event.clientY - start.y);
+  if (!photo || photo !== start.photo || photo.hidden || moved > 12) return;
+  lastTouchPhotoOpenedAt = Date.now();
+  openPhotoLightbox(photo.closest(".product-card"), photo.currentSrc || photo.src);
+}, { passive: true });
+
 productGrid.addEventListener("click", event => {
-  const clickedPhoto = event.target.closest(".catalog-photo");
+  const target = event.target instanceof Element ? event.target : event.target?.parentElement;
+  const clickedPhoto = target && target.closest(".catalog-photo");
   if (clickedPhoto && !clickedPhoto.hidden) {
-    openPhotoLightbox(clickedPhoto.closest(".product-card"), clickedPhoto.src);
+    // Touch browsers often dispatch click just after pointerup; avoid duplicate
+    // history entries/reopening after the pointer handler already opened it.
+    if (Date.now() - lastTouchPhotoOpenedAt < 900) return;
+    openPhotoLightbox(clickedPhoto.closest(".product-card"), clickedPhoto.currentSrc || clickedPhoto.src);
     return;
   }
   const photoButton = event.target.closest("[data-gallery-photo]");
@@ -618,6 +649,15 @@ productGrid.addEventListener("click", event => {
     const next = thumbs[(current + 1) % thumbs.length];
     if (next) next.click();
   }
+});
+
+productGrid.addEventListener("keydown", event => {
+  if (event.key !== "Enter" && event.key !== " ") return;
+  const target = event.target instanceof Element ? event.target : event.target?.parentElement;
+  const photo = target && target.closest(".catalog-photo");
+  if (!photo || photo.hidden) return;
+  event.preventDefault();
+  openPhotoLightbox(photo.closest(".product-card"), photo.currentSrc || photo.src);
 });
 
 productGrid.addEventListener("click", event => {

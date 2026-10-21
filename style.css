@@ -1424,3 +1424,25 @@ body { background:#fff; color:var(--ink); }
 .product-image .product-tag {
   z-index: 4;
 }
+
+
+/* Reliable photo taps on phones and tablets; do not block ordinary page scrolling. */
+.product-image .catalog-photo {
+  position: relative;
+  z-index: 1;
+  pointer-events: auto;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-user-drag: none;
+  cursor: zoom-in;
+}
+.product-image .catalog-photo:focus-visible {
+  outline: 3px solid #bd8b45;
+  outline-offset: -3px;
+}
+@media (hover: none), (pointer: coarse) {
+  .product-image .catalog-photo { cursor: pointer; }
+}
