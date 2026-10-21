@@ -7,9 +7,10 @@ const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwD97xQD3dIEE
 const CURRENCY = "INR";
 
 const products = [
-  {id:1,name:"Navy Blue Floral Printed Anarkali Kurta Pant Dupatta Set",category:"3-Piece Kurti Set",price:299,mrp:1499,rating:4.3,reviews:2500,image:"images/catalog-1-1.JPG",gallery:["images/catalog-1-2.JPG","images/catalog-1-3.JPG","images/catalog-1-4.JPG"],video:"videos/catalog-1.mp4",tag:"SALE",description:"Fabric:- Rayon", color:"#e9dfd0"},
-  {id:2,name:"Mustard Yellow Floral Printed Kurta Pant Dupatta Set",    category:"3-Piece Kurti Set",price:299,mrp:1499,rating:4.6,reviews:3076,image:"images/catalog-2-1.JPG",gallery:["images/catalog-2-2.JPG","images/catalog-2-3.JPG","images/catalog-2-4.JPG"],video:"videos/catalog-2.mp4",tag:"SALE",description:"Fabric:- Cotton Blend",color:"#f0e4c9"},
-  {id:3,name:"Cream Ethnic Printed Kurta with Bottomwear and Dupatta",  category:"3-Piece Kurti Set",price:299,mrp:1499,rating:4.5,reviews:3108,image:"images/catalog-3-1.JPG",gallery:["images/catalog-3-2.JPG","images/catalog-3-3.JPG","images/catalog-3-4.JPG"],video:"videos/catalog-3.mp4",tag:"SALE",description:"Fabric:- Cotton Blend",    color:"#e4e5d8"}
+  {id:1,name:"Navy Blue Floral Printed Anarkali Kurta Pant Dupatta Set",category:"3-Piece Kurti Set",price:349,mrp:1499,rating:4.3,reviews:2500,image:"images/catalog-1-1.JPG",gallery:["images/catalog-1-2.JPG","images/catalog-1-3.JPG","images/catalog-1-4.JPG"],video:"videos/catalog-1.mp4",tag:"SALE",description:"Fabric:- Rayon",       color:"#e9dfd0"},
+  {id:2,name:"Mustard Yellow Floral Printed Kurta Pant Dupatta Set",    category:"3-Piece Kurti Set",price:349,mrp:1499,rating:4.6,reviews:3076,image:"images/catalog-2-1.JPG",gallery:["images/catalog-2-2.JPG","images/catalog-2-3.JPG","images/catalog-2-4.JPG"],video:"videos/catalog-2.mp4",tag:"SALE",description:"Fabric:- Cotton Blend",color:"#f0e4c9"},
+  {id:3,name:"Cream Ethnic Printed Kurta with Bottomwear and Dupatta",  category:"3-Piece Kurti Set",price:349,mrp:1499,rating:4.5,reviews:3108,image:"images/catalog-3-1.JPG",gallery:["images/catalog-3-2.JPG","images/catalog-3-3.JPG","images/catalog-3-4.JPG"],video:"videos/catalog-3.mp4",tag:"SALE",description:"Fabric:- Cotton Blend",color:"#e4e5d8"},
+  {id:4,name:"Black Kurti With Bottomwear",                             category:"Corset",           price:349,mrp:1999,rating:4.7,reviews:3708,image:"images/catalog-4-1.JPG",gallery:["images/catalog-4-2.JPG","images/catalog-4-3.JPG","images/catalog-4-4.JPG"],video:"videos/catalog-4.mp4",tag:"SALE",description:"Fabric:- Rayon",       color:"#e4e5d8"}
 ];
 
 const $ = (selector) => document.querySelector(selector);
@@ -68,22 +69,24 @@ function renderProducts() {
       <div class="product-image" style="background:${product.color}">
         ${product.tag ? `<span class="product-tag">${escapeHtml(product.tag)}</span>` : ""}
         <img class="catalog-photo" src="${product.image}" alt="${escapeHtml(product.name)}">
-        <button class="gallery-next" type="button" aria-label="Next photo" data-gallery-next="${product.id}" hidden>›</button>
+        <video class="catalog-video" data-main-video="${product.id}" controls preload="metadata" playsinline aria-label="${escapeHtml(product.name)} product video" hidden></video>
+        <button class="gallery-next" type="button" aria-label="Next photo or video" data-gallery-next="${product.id}" hidden>›</button>
       </div>
       <div class="product-gallery" data-gallery="${product.id}">
-        <div class="gallery-thumbnails" aria-label="Product photos">
-          <button type="button" class="gallery-thumb active" data-gallery-photo="${product.id}" data-src="${product.image}" aria-label="Main photo">
-            <img src="${product.image}" alt="">
-          </button>
-          ${(product.gallery || []).map((src, index) => `
-            <button type="button" class="gallery-thumb" data-gallery-photo="${product.id}" data-src="${src}" aria-label="Product photo ${index + 2}">
-              <img src="${src}" alt="">
-            </button>`).join("")}
+        <div class="gallery-controls-row">
+          <div class="gallery-thumbnails" aria-label="Product photos">
+            <button type="button" class="gallery-thumb active" data-gallery-photo="${product.id}" data-src="${product.image}" aria-label="Main photo">
+              <img src="${product.image}" alt="">
+            </button>
+            ${(product.gallery || []).map((src, index) => `
+              <button type="button" class="gallery-thumb" data-gallery-photo="${product.id}" data-src="${src}" aria-label="Product photo ${index + 2}">
+                <img src="${src}" alt="">
+              </button>`).join("")}
+            <button type="button" class="gallery-thumb gallery-video-thumb" data-gallery-video="${product.id}" aria-label="Play ${escapeHtml(product.name)} video" hidden>
+              <span class="video-thumb-poster"><img src="${product.image}" alt=""><span class="video-play-icon" aria-hidden="true">▶</span><small>VIDEO</small></span>
+            </button>
+          </div>
         </div>
-        <div class="product-video" data-video-box="${product.id}" hidden>
-          <video controls preload="metadata" playsinline aria-label="${escapeHtml(product.name)} product video"></video>
-        </div>
-        <button class="video-toggle" type="button" data-video-toggle="${product.id}" hidden>▶ Watch product video</button>
       </div>
       <div class="product-info">
         <span class="product-category">${escapeHtml(product.category)}</span>
@@ -108,8 +111,8 @@ function renderProducts() {
       </div>`;
     productGrid.appendChild(card);
 
-    // Optional local media: missing optional photos/video are hidden gracefully.
-    card.querySelectorAll(".gallery-thumb").forEach(thumb => {
+    // Optional local media: missing photos or videos are hidden gracefully.
+    card.querySelectorAll("[data-gallery-photo]").forEach(thumb => {
       const image = thumb.querySelector("img");
       image.addEventListener("error", () => {
         if (thumb.dataset.src !== product.image) thumb.remove();
@@ -117,20 +120,23 @@ function renderProducts() {
       });
       image.addEventListener("load", () => updateGalleryControls(card, product));
     });
-    const video = card.querySelector("video");
-    const videoToggle = card.querySelector("[data-video-toggle]");
-    const videoBox = card.querySelector("[data-video-box]");
+    const mainPhoto = card.querySelector(".catalog-photo");
+    const video = card.querySelector("[data-main-video]");
+    const videoThumb = card.querySelector("[data-gallery-video]");
     video.src = product.video;
     video.addEventListener("error", () => {
-      videoBox.hidden = true;
-      videoToggle.hidden = true;
+      video.pause();
+      video.hidden = true;
+      mainPhoto.hidden = false;
+      videoThumb.hidden = true;
+      updateGalleryControls(card, product);
     });
     video.addEventListener("loadedmetadata", () => {
-      videoToggle.hidden = false;
+      videoThumb.hidden = false;
       updateGalleryControls(card, product);
     });
     video.addEventListener("canplay", () => {
-      videoToggle.hidden = false;
+      videoThumb.hidden = false;
       updateGalleryControls(card, product);
     });
     updateGalleryControls(card, product);
@@ -138,12 +144,14 @@ function renderProducts() {
 }
 
 function updateGalleryControls(card, product) {
-  const thumbs = [...card.querySelectorAll(".gallery-thumb")];
+  const photoThumbs = [...card.querySelectorAll("[data-gallery-photo]")];
+  const extraPhotos = photoThumbs.filter(thumb => thumb.dataset.src !== product.image);
+  const videoThumb = card.querySelector("[data-gallery-video]");
   const next = card.querySelector("[data-gallery-next]");
-  const availableExtra = thumbs.filter(t => t.dataset.src !== product.image);
-  next.hidden = availableExtra.length === 0;
+  const hasVideo = videoThumb && !videoThumb.hidden;
+  next.hidden = extraPhotos.length === 0 && !hasVideo;
   const gallery = card.querySelector(".product-gallery");
-  gallery.hidden = availableExtra.length === 0 && card.querySelector("[data-video-toggle]").hidden;
+  gallery.hidden = extraPhotos.length === 0 && !hasVideo;
 }
 
 function escapeHtml(value) {
@@ -509,38 +517,44 @@ function moveLightboxPhoto(delta) {
 
 productGrid.addEventListener("click", event => {
   const clickedPhoto = event.target.closest(".catalog-photo");
-  if (clickedPhoto) {
+  if (clickedPhoto && !clickedPhoto.hidden) {
     openPhotoLightbox(clickedPhoto.closest(".product-card"), clickedPhoto.src);
     return;
   }
   const photoButton = event.target.closest("[data-gallery-photo]");
+  const videoButton = event.target.closest("[data-gallery-video]");
   const nextButton = event.target.closest("[data-gallery-next]");
-  const videoButton = event.target.closest("[data-video-toggle]");
 
   if (photoButton) {
     const card = photoButton.closest(".product-card");
     const main = card.querySelector(".catalog-photo");
+    const video = card.querySelector("[data-main-video]");
+    video.pause();
+    video.currentTime = 0;
+    video.hidden = true;
+    main.hidden = false;
     main.src = photoButton.dataset.src;
-    card.querySelectorAll(".gallery-thumb").forEach(t => t.classList.toggle("active", t === photoButton));
+    card.querySelectorAll(".gallery-thumb").forEach(thumb => thumb.classList.toggle("active", thumb === photoButton));
+    return;
+  }
+  if (videoButton && !videoButton.hidden) {
+    const card = videoButton.closest(".product-card");
+    const main = card.querySelector(".catalog-photo");
+    const video = card.querySelector("[data-main-video]");
+    main.hidden = true;
+    video.hidden = false;
+    card.querySelectorAll(".gallery-thumb").forEach(thumb => thumb.classList.toggle("active", thumb === videoButton));
+    video.play().catch(() => {
+      showToast("Tap the play button on the video to start playback.");
+    });
+    return;
   }
   if (nextButton) {
     const card = nextButton.closest(".product-card");
-    const thumbs = [...card.querySelectorAll(".gallery-thumb")];
-    const current = Math.max(0, thumbs.findIndex(t => t.classList.contains("active")));
+    const thumbs = [...card.querySelectorAll('[data-gallery-photo], [data-gallery-video]:not([hidden])')];
+    const current = Math.max(0, thumbs.findIndex(thumb => thumb.classList.contains("active")));
     const next = thumbs[(current + 1) % thumbs.length];
     if (next) next.click();
-  }
-  if (videoButton) {
-    const card = videoButton.closest(".product-card");
-    const videoBox = card.querySelector("[data-video-box]");
-    const video = videoBox.querySelector("video");
-    videoBox.hidden = !videoBox.hidden;
-    if (!videoBox.hidden) {
-      video.play().catch(() => {});
-      videoBox.scrollIntoView({behavior:"smooth", block:"nearest"});
-    } else {
-      video.pause();
-    }
   }
 });
 
