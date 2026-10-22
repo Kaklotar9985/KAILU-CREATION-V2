@@ -1832,3 +1832,94 @@ body { background:#fff; color:var(--ink); }
   }
   .brand-tagline small { font-size: 8.5px !important; max-width: 110px; }
 }
+
+
+/* FINAL MOBILE FIX — keep footer branding contained, make MRP legible, and prevent video overfetch. */
+.footer { min-width: 0; overflow: hidden; }
+.footer .footer-brand-block { min-width: 0; max-width: 100%; align-items: center; }
+.footer .footer-brand-logo {
+  display: block !important;
+  position: static !important;
+  transform: none !important;
+  flex: 0 0 auto !important;
+  width: 150px !important;
+  height: 100px !important;
+  max-width: min(150px, 36vw) !important;
+  max-height: 100px !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  object-fit: contain !important;
+  object-position: center !important;
+  box-sizing: border-box !important;
+}
+.footer .footer-brand-block > div { min-width: 0; }
+.footer .footer-brand-block strong { overflow-wrap: anywhere; }
+
+/* At phone/tablet widths, put MRP on its own readable line below the selling price. */
+@media (max-width: 760px) {
+  .product-pricing {
+    display: grid !important;
+    grid-template-columns: max-content minmax(0, 1fr) !important;
+    grid-template-areas: "price discount" "mrp mrp" !important;
+    justify-content: start !important;
+    align-items: center !important;
+    justify-items: start;
+    column-gap: 7px !important;
+    row-gap: 6px !important;
+    width: 100% !important;
+    height: auto !important;
+    min-height: 0 !important;
+    margin-top: 12px !important;
+    white-space: normal !important;
+    overflow: visible !important;
+  }
+  .product-pricing .price {
+    grid-area: price !important;
+    font-size: 22px !important;
+    line-height: 1.1 !important;
+  }
+  .product-pricing .discount-badge {
+    grid-area: discount !important;
+    justify-self: start !important;
+    align-self: center !important;
+    font-size: 10px !important;
+    min-height: 23px !important;
+    padding: 0 8px !important;
+  }
+  .product-pricing .mrp-label {
+    grid-area: mrp !important;
+    display: inline-flex !important;
+    border: 0 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    gap: 5px !important;
+    color: #35473e !important;
+    font-size: 12.5px !important;
+    font-weight: 600 !important;
+    line-height: 1.4 !important;
+    white-space: nowrap !important;
+  }
+  .product-pricing .mrp-label del {
+    color: #35473e !important;
+    font-size: 12.5px !important;
+    font-weight: 700 !important;
+    text-decoration-thickness: 1.5px !important;
+  }
+  .footer .footer-brand-logo {
+    width: 110px !important;
+    height: 76px !important;
+    max-width: 32vw !important;
+    max-height: 76px !important;
+  }
+  .footer .footer-brand-block { gap: 12px !important; align-items: flex-start !important; }
+}
+@media (max-width: 390px) {
+  .footer .footer-brand-logo {
+    width: 88px !important;
+    height: 62px !important;
+    max-width: 28vw !important;
+    max-height: 62px !important;
+  }
+  .product-pricing .mrp-label,
+  .product-pricing .mrp-label del { font-size: 12px !important; }
+}

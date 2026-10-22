@@ -8,9 +8,9 @@ const CURRENCY = "INR";
 
 const products = [
   {id:1,name:"Navy Blue Floral Printed Anarkali Kurta Pant Dupatta Set",category:"3-Piece Kurti Set",price:349,mrp:1499,rating:4.3,reviews:2500,image:"images/catalog-1-1.JPG",gallery:["images/catalog-1-2.JPG","images/catalog-1-3.JPG","images/catalog-1-4.JPG"],video:"videos/catalog-1.mp4",tag:"SALE",description:"Fabric:- Rayon",       color:"#e9dfd0"},
-  {id:2,name:"Mustard Yellow Floral Printed Kurta Pant Dupatta Set",    category:"3-Piece Kurti Set",price:349,mrp:1499,rating:4.6,reviews:3076,image:"images/catalog-2-1.JPG",gallery:["images/catalog-2-2.JPG","images/catalog-2-3.JPG","images/catalog-2-4.JPG"],video:"videos/catalog-2.mp4",tag:"SALE",description:"Fabric:- Cotton Blend",color:"#f0e4c9"},
+  {id:2,name:"Mustard Yellow Floral Printed Kurta Pant Dupatta Set",    category:"3-Piece Kurti Set",price:349,mrp:1499,rating:4.6,reviews:3076,image:"images/catalog-2-1.JPG",gallery:["images/catalog-2-2.JPG","images/catalog-2-3.JPG","images/catalog-2-4.JPG"],video:"",tag:"SALE",description:"Fabric:- Cotton Blend",color:"#f0e4c9"},
   {id:3,name:"Cream Ethnic Printed Kurta with Bottomwear and Dupatta",  category:"3-Piece Kurti Set",price:349,mrp:1499,rating:4.5,reviews:3108,image:"images/catalog-3-1.JPG",gallery:["images/catalog-3-2.JPG","images/catalog-3-3.JPG","images/catalog-3-4.JPG"],video:"videos/catalog-3.mp4",tag:"SALE",description:"Fabric:- Cotton Blend",color:"#e4e5d8"},
-  {id:4,name:"Black Kurti With Bottomwear",                             category:"Corset",           price:349,mrp:1999,rating:4.7,reviews:3708,image:"images/catalog-4-1.JPG",gallery:["images/catalog-4-2.JPG","images/catalog-4-3.JPG","images/catalog-4-4.JPG"],video:"videos/catalog-4.mp4",tag:"SALE",description:"Fabric:- Rayon",       color:"#e4e5d8"}
+  {id:4,name:"Black Kurti With Bottomwear",                             category:"Corset",           price:349,mrp:1999,rating:4.7,reviews:3708,image:"images/catalog-4-1.JPG",gallery:["images/catalog-4-2.JPG","images/catalog-4-3.JPG","images/catalog-4-4.JPG"],video:"",tag:"SALE",description:"Fabric:- Rayon",       color:"#e4e5d8"}
 ];
 
 const $ = (selector) => document.querySelector(selector);
@@ -123,23 +123,23 @@ function renderProducts() {
     const mainPhoto = card.querySelector(".catalog-photo");
     const video = card.querySelector("[data-main-video]");
     const videoThumb = card.querySelector("[data-gallery-video]");
-    // Product videos start silently. Customers can enable sound with the native speaker control.
+    // Mobile performance: do not download product videos while the catalog is only being viewed.
+    // Load an available video only after the customer opens its VIDEO thumbnail.
     video.muted = true;
     video.defaultMuted = true;
-    video.src = product.video;
+    video.preload = "none";
+    video.playsInline = true;
+    if (product.video) {
+      video.dataset.videoSrc = product.video;
+      videoThumb.hidden = false;
+    } else {
+      videoThumb.hidden = true;
+    }
     video.addEventListener("error", () => {
       video.pause();
       video.hidden = true;
       mainPhoto.hidden = false;
       videoThumb.hidden = true;
-      updateGalleryControls(card, product);
-    });
-    video.addEventListener("loadedmetadata", () => {
-      videoThumb.hidden = false;
-      updateGalleryControls(card, product);
-    });
-    video.addEventListener("canplay", () => {
-      videoThumb.hidden = false;
       updateGalleryControls(card, product);
     });
     updateGalleryControls(card, product);
@@ -554,8 +554,9 @@ function openPhotoLightbox(card, clickedSrc) {
   const videoThumb = card.querySelector("[data-gallery-video]");
   const cardVideo = card.querySelector("[data-main-video]");
   // A video is added to the full-screen sequence only after it is confirmed available.
-  if (videoThumb && !videoThumb.hidden && cardVideo && cardVideo.currentSrc && cardVideo.networkState !== HTMLMediaElement.NETWORK_NO_SOURCE) {
-    lightboxItems.push({ type: "video", src: cardVideo.currentSrc, alt: "Product video" });
+  if (videoThumb && !videoThumb.hidden && cardVideo && cardVideo.dataset.videoSrc) {
+    // Include the known local video even when it has not yet been fetched; load it only if reached.
+    lightboxItems.push({ type: "video", src: cardVideo.dataset.videoSrc, alt: "Product video" });
   }
   if (!lightboxItems.length) lightboxItems = [{ type: "photo", src: clickedSrc, alt: "Catalog photo" }];
 
@@ -631,14 +632,22 @@ productGrid.addEventListener("click", event => {
     const card = videoButton.closest(".product-card");
     const main = card.querySelector(".catalog-photo");
     const video = card.querySelector("[data-main-video]");
+    const videoSrc = video.dataset.videoSrc;
+    if (!videoSrc) return;
     main.hidden = true;
     video.hidden = false;
+    // Load only on an intentional tap, to avoid downloading several large videos on mobile.
+    if (!video.getAttribute("src")) {
+      video.setAttribute("src", videoSrc);
+      video.preload = "auto";
+      video.load();
+    }
     // Always start the product video muted; the visible speaker control can enable sound.
     video.muted = true;
     video.defaultMuted = true;
     card.querySelectorAll(".gallery-thumb").forEach(thumb => thumb.classList.toggle("active", thumb === videoButton));
     video.play().catch(() => {
-      showToast("Tap the play button on the video to start playback.");
+      showToast("Video is loading. Tap Play when it appears.");
     });
     return;
   }
