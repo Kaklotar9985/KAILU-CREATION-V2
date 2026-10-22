@@ -1923,3 +1923,29 @@ body { background:#fff; color:var(--ink); }
   .product-pricing .mrp-label,
   .product-pricing .mrp-label del { font-size: 12px !important; }
 }
+
+
+/* Courier PIN lookup feedback and auto-filled delivery area fields */
+.pincode-feedback {
+  display: block;
+  margin: 6px 1px 2px;
+  min-height: 0;
+  font-size: 11px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+.pincode-feedback:empty { display: none; }
+.pincode-feedback[data-status="info"] { color: #6b7771; }
+.pincode-feedback[data-status="success"] { color: #147a45; font-weight: 600; }
+.pincode-feedback[data-status="error"] { color: #c62828; font-weight: 600; }
+.customer-input.auto-location-field[readonly] {
+  background: #f6f5f0;
+  color: #183f33;
+  cursor: default;
+}
+.customer-input.auto-location-field[readonly]:focus {
+  outline-color: #b9c7bd;
+}
+@media (max-width: 700px) {
+  .pincode-feedback { font-size: 12px; line-height: 1.5; }
+}

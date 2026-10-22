@@ -156,11 +156,12 @@
       <label class="field-label" for="roadArea">Road Name / Area / Colony <span class="required-mark">*</span></label>
       <input id="roadArea" class="customer-input" type="text" placeholder="Road, area or colony" autocomplete="address-line2" required>
       <label class="field-label" for="pincode">Pincode <span class="required-mark">*</span></label>
-      <input id="pincode" class="customer-input" type="text" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" placeholder="6-digit PIN code" autocomplete="postal-code" required>
-      <label class="field-label" for="city">City <span class="required-mark">*</span></label>
-      <input id="city" class="customer-input" type="text" placeholder="Enter city" autocomplete="address-level2" required>
+      <input id="pincode" class="customer-input" type="text" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" placeholder="Enter 6-digit PIN code" autocomplete="postal-code" aria-describedby="pincodeFeedback" aria-invalid="false" required>
+      <small id="pincodeFeedback" class="pincode-feedback" data-status="info" aria-live="polite">Enter a 6-digit PIN code to fill City and State automatically.</small>
+      <label class="field-label" for="city">City / District <span class="required-mark">*</span></label>
+      <input id="city" class="customer-input auto-location-field" type="text" placeholder="Enter city" autocomplete="address-level2" readonly required>
       <label class="field-label" for="state">State <span class="required-mark">*</span></label>
-      <input id="state" class="customer-input" type="text" placeholder="Enter state" autocomplete="address-level1" required>
+      <input id="state" class="customer-input auto-location-field" type="text" placeholder="Enter state" autocomplete="address-level1" readonly required>
       <button id="whatsappOrder" class="whatsapp-button"><span>◉</span> Place Order </button>
       <small class="privacy-note">Your order details will be submitted to the configured order system.</small>
       </div>
@@ -184,6 +185,7 @@
     <button id="photoLightboxNext" class="photo-lightbox-nav photo-lightbox-next" type="button" aria-label="Next photo or video">›</button>
   </div>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <script src="pincode-serviceability.js"></script>
   <script src="script.js"></script>
 </body>
 </html>

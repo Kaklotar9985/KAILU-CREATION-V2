@@ -6,6 +6,84 @@ const WHATSAPP_NUMBER = "918160621151"; // Optional WhatsApp fallback
 const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwD97xQD3dIEExZ02b3H6Nb5m1CIs6KyHI9EOL5jQTJgkK_RB17ym81WYpyeGWowrD9YQ/exec";
 const CURRENCY = "INR";
 
+const PINCODE_DATA = window.KAILU_PINCODE_DATA || Object.create(null);
+
+function setPincodeFeedback(message, status = "info") {
+  const feedback = $("#pincodeFeedback");
+  if (!feedback) return;
+  feedback.textContent = message;
+  feedback.dataset.status = status;
+}
+
+function clearAutoLocationFields() {
+  const city = $("#city");
+  const state = $("#state");
+  if (city) city.value = "";
+  if (state) state.value = "";
+  if (city) city.classList.remove("field-invalid");
+  if (state) state.classList.remove("field-invalid");
+}
+
+// Uses the supplied courier serviceability list. District is shown in the City field.
+function validatePincode(options = {}) {
+  const pincodeField = $("#pincode");
+  const cityField = $("#city");
+  const stateField = $("#state");
+  if (!pincodeField || !cityField || !stateField) {
+    return { valid: false, message: "Pincode validation is unavailable." };
+  }
+
+  const pin = pincodeField.value.trim();
+  const showIncomplete = options.showIncomplete === true;
+  pincodeField.setAttribute("aria-invalid", "false");
+
+  if (!/^[0-9]{6}$/.test(pin)) {
+    clearAutoLocationFields();
+    if (showIncomplete) {
+      const message = pin ? "Please enter a valid 6-digit PIN code." : "Please enter your 6-digit PIN code.";
+      pincodeField.classList.add("field-invalid");
+      pincodeField.setAttribute("aria-invalid", "true");
+      setPincodeFeedback(message, "error");
+      return { valid: false, message };
+    }
+    pincodeField.classList.remove("field-invalid");
+    if (pin.length > 0) {
+      setPincodeFeedback(`Enter ${Math.max(0, 6 - pin.length)} more digit${6 - pin.length === 1 ? "" : "s"} to look up City and State.`, "info");
+    } else {
+      setPincodeFeedback("Enter a 6-digit PIN code to fill City and State automatically.", "info");
+    }
+    return { valid: false, message: "Enter a valid 6-digit PIN code." };
+  }
+
+  const match = PINCODE_DATA[pin];
+  if (!match) {
+    clearAutoLocationFields();
+    const message = `PIN code ${pin} was not found in the courier serviceability list. Please check the PIN code.`;
+    pincodeField.classList.add("field-invalid");
+    pincodeField.setAttribute("aria-invalid", "true");
+    setPincodeFeedback(`✕ ${message}`, "error");
+    return { valid: false, message };
+  }
+
+  cityField.value = match.district || "";
+  stateField.value = match.state || "";
+  cityField.classList.remove("field-invalid");
+  stateField.classList.remove("field-invalid");
+
+  if (!match.cod) {
+    const message = `PIN code found (${match.district}, ${match.state}), but Cash on Delivery is not available for this PIN. Please use another PIN code.`;
+    pincodeField.classList.add("field-invalid");
+    pincodeField.setAttribute("aria-invalid", "true");
+    setPincodeFeedback(`✕ ${message}`, "error");
+    return { valid: false, message, record: match };
+  }
+
+  pincodeField.classList.remove("field-invalid");
+  pincodeField.setAttribute("aria-invalid", "false");
+  setPincodeFeedback(`✓ Delivery available for ${match.district}, ${match.state} (Cash on Delivery).`, "success");
+  return { valid: true, message: "Pincode verified.", record: match };
+}
+
 const products = [
   {id:1,name:"Navy Blue Floral Printed Anarkali Kurta Pant Dupatta Set",category:"3-Piece Kurti Set",price:349,mrp:1499,rating:4.3,reviews:2500,image:"images/catalog-1-1.JPG",gallery:["images/catalog-1-2.JPG","images/catalog-1-3.JPG","images/catalog-1-4.JPG"],video:"videos/catalog-1.mp4",tag:"SALE",description:"Fabric:- Rayon",       color:"#e9dfd0"},
   {id:2,name:"Mustard Yellow Floral Printed Kurta Pant Dupatta Set",    category:"3-Piece Kurti Set",price:349,mrp:1499,rating:4.6,reviews:3076,image:"images/catalog-2-1.JPG",gallery:["images/catalog-2-2.JPG","images/catalog-2-3.JPG","images/catalog-2-4.JPG"],video:"",tag:"SALE",description:"Fabric:- Cotton Blend",color:"#f0e4c9"},
@@ -354,6 +432,16 @@ function showToast(message) {
 async function sendWhatsAppOrder() {
   const deliveryFields = $("#deliveryFields");
   if (deliveryFields) deliveryFields.hidden = false;
+  const pincodeValidation = validatePincode({ showIncomplete: true });
+  if (!pincodeValidation.valid) {
+    const pincodeField = $("#pincode");
+    if (pincodeField) {
+      pincodeField.scrollIntoView({ behavior: "smooth", block: "center" });
+      pincodeField.focus({ preventScroll: true });
+    }
+    showToast(pincodeValidation.message);
+    return;
+  }
   const missingFields = highlightMissingFields();
   if (missingFields.length) {
     showToast("Please complete the highlighted fields.");
@@ -713,6 +801,35 @@ document.addEventListener("keydown", event => {
 document.querySelectorAll(".customer-input").forEach(field => {
   field.addEventListener("input", () => field.classList.remove("field-invalid"));
 });
+
+const pincodeInput = $("#pincode");
+if (pincodeInput) {
+  pincodeInput.addEventListener("input", () => {
+    // Accept digits only and stop at six characters, including paste/autofill.
+    pincodeInput.value = pincodeInput.value.replace(/\D/g, "").slice(0, 6);
+    if (pincodeInput.value.length === 6) {
+      validatePincode();
+      return;
+    }
+    pincodeInput.classList.remove("field-invalid");
+    pincodeInput.setAttribute("aria-invalid", "false");
+    clearAutoLocationFields();
+    if (pincodeInput.value.length > 0) {
+      const remaining = 6 - pincodeInput.value.length;
+      setPincodeFeedback(`Enter ${remaining} more digit${remaining === 1 ? "" : "s"} to look up City and State.`, "info");
+    } else {
+      setPincodeFeedback("Enter a 6-digit PIN code to fill City and State automatically.", "info");
+    }
+  });
+  pincodeInput.addEventListener("blur", () => {
+    if (pincodeInput.value.trim() && pincodeInput.value.length !== 6) {
+      validatePincode({ showIncomplete: true });
+    } else if (pincodeInput.value.length === 6) {
+      validatePincode();
+    }
+  });
+}
+
 const continueToDetails = $("#continueToDetails");
 if (continueToDetails) {
   continueToDetails.addEventListener("click", () => {
