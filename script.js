@@ -408,7 +408,7 @@ async function sendWhatsAppOrder() {
     lineTotal: product.price * quantity
   }));
   const payload = new URLSearchParams({
-    store: "KAILU CREATION",
+    store: "KAILU CREATION™",
     customerName: name,
     mobileNumber,
     size: orderItems.map(item => `${item.size}`).join(";"),
