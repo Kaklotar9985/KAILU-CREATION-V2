@@ -2031,3 +2031,58 @@ body { background:#fff; color:var(--ink); }
   .cart-drawer { padding-left: 12px !important; padding-right: 12px !important; }
   .cart-head h2 { font-size: 22px !important; }
 }
+
+
+/* FINAL CART: each physical unit has its own selectable size and visible row. */
+.cart-items {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  max-height: calc(100dvh - 305px) !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+.cart-unit-line { align-items: start !important; }
+.cart-unit-controls { display:flex; flex-wrap:wrap; align-items:center; gap:7px !important; }
+.cart-unit-controls .cart-add-one {
+  width:auto !important; min-width:76px; height:28px; padding:0 9px;
+  border:1px solid #dce3dc; border-radius:5px; background:#fff;
+  color:var(--green); font-size:10px; font-weight:700; cursor:pointer;
+}
+.cart-unit-controls .remove-button {
+  width:auto !important; height:28px; padding:0 8px; border:1px solid #eadbd7;
+  border-radius:5px; background:#fff; color:#946d65; font-size:10px; cursor:pointer;
+}
+.cart-unit-controls button:focus-visible { outline:2px solid #b47a3c; outline-offset:2px; }
+@media (min-width:701px) {
+  .cart-drawer { overflow-y:auto !important; }
+  .cart-items { max-height:calc(100dvh - 310px) !important; }
+}
+@media (max-width:700px) {
+  .cart-drawer { overflow-y:auto !important; }
+  .cart-items {
+    flex:0 1 auto !important;
+    min-height:100px !important;
+    max-height:min(44dvh, 410px) !important;
+    overflow-y:auto !important;
+    overscroll-behavior:contain;
+  }
+  #cartItems .cart-line { padding:12px 0 !important; }
+  #cartItems .cart-thumb { width:50px !important; height:62px !important; }
+  #cartItems .cart-product-details h4 { font-size:12px !important; }
+  #cartItems .cart-size-picker { gap:4px !important; }
+  #cartItems .cart-size-button { min-width:29px; min-height:30px; padding:4px 6px; font-size:10px; }
+  .cart-unit-controls .cart-add-one, .cart-unit-controls .remove-button { min-height:28px; }
+}
+
+/* Make the per-piece controls clear even under earlier button reset rules. */
+#cartItems .cart-unit-controls .cart-add-one,
+#cartItems .cart-unit-controls .remove-button {
+  width: auto !important;
+  height: 28px !important;
+  min-height: 28px !important;
+  padding: 0 9px !important;
+  flex: 0 0 auto !important;
+}

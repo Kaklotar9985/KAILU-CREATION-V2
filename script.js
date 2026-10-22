@@ -103,7 +103,7 @@ const cartEmpty = $("#cartEmpty");
 const cartBottom = $("#cartBottom");
 const toast = $("#toast");
 let cart = {};
-const cartSizes = {};
+const cartUnitSizes = {};
 let toastTimer;
 
 const money = (amount) => new Intl.NumberFormat("en-IN", {
@@ -247,7 +247,9 @@ function addToCart(id) {
     showToast("This catalog could not be added. Please refresh the page.");
     return;
   }
+  if (!Array.isArray(cartUnitSizes[id])) cartUnitSizes[id] = [];
   cart[id] = (cart[id] || 0) + 1;
+  cartUnitSizes[id].push("");
   renderCart();
   // Add to Cart should only show a brief confirmation; keep the catalog visible.
   showToast(`${product.name} added to your cart.`);
@@ -257,6 +259,8 @@ function addToCart(id) {
 function buyNow(id) {
   // Buy Now starts checkout with the selected catalog only.
   cart = { [id]: 1 };
+  Object.keys(cartUnitSizes).forEach(key => delete cartUnitSizes[key]);
+  cartUnitSizes[id] = [""];
   renderCart();
   openCart();
   startSizeStep();
@@ -306,33 +310,69 @@ function highlightMissingFields() {
   return missing;
 }
 
-function changeQuantity(id, delta) {
-  cart[id] = (cart[id] || 0) + delta;
-  if (cart[id] <= 0) delete cart[id];
+function addCartUnit(id) {
+  const product = products.find(item => item.id === Number(id));
+  if (!product) return;
+  if (!Array.isArray(cartUnitSizes[id])) cartUnitSizes[id] = [];
+  cart[id] = (cart[id] || 0) + 1;
+  cartUnitSizes[id].push("");
   renderCart();
 }
 
-function removeFromCart(id) {
-  delete cart[id];
+function removeCartUnit(id, unitIndex) {
+  const key = String(id);
+  if (!cart[key]) return;
+  const sizes = Array.isArray(cartUnitSizes[key]) ? cartUnitSizes[key] : [];
+  const index = Number(unitIndex);
+  if (Number.isInteger(index) && index >= 0 && index < sizes.length) sizes.splice(index, 1);
+  cart[key] -= 1;
+  if (cart[key] <= 0) {
+    delete cart[key];
+    delete cartUnitSizes[key];
+  } else {
+    cartUnitSizes[key] = sizes.slice(0, cart[key]);
+  }
   renderCart();
 }
 
+function getCartUnits() {
+  const units = [];
+  Object.entries(cart).forEach(([id, quantity]) => {
+    const product = products.find(item => item.id === Number(id));
+    if (!product || quantity <= 0) return;
+    if (!Array.isArray(cartUnitSizes[id])) cartUnitSizes[id] = [];
+    while (cartUnitSizes[id].length < quantity) cartUnitSizes[id].push("");
+    if (cartUnitSizes[id].length > quantity) cartUnitSizes[id].length = quantity;
+    for (let unitIndex = 0; unitIndex < quantity; unitIndex += 1) {
+      units.push({ product, unitIndex, size: cartUnitSizes[id][unitIndex] || "" });
+    }
+  });
+  return units;
+}
+
+// Aggregate individual pieces by product + size for the order backend.
 function getCartEntries() {
-  return Object.entries(cart).map(([id, quantity]) => ({
-    product: products.find(p => p.id === Number(id)), quantity
-  })).filter(item => item.product);
+  const grouped = new Map();
+  getCartUnits().forEach(unit => {
+    const key = `${unit.product.id}::${unit.size}`;
+    if (!grouped.has(key)) grouped.set(key, { product: unit.product, quantity: 0, size: unit.size });
+    grouped.get(key).quantity += 1;
+  });
+  return [...grouped.values()];
 }
 
 function renderCart() {
-  const entries = getCartEntries();
-  const count = entries.reduce((sum, item) => sum + item.quantity, 0);
-  const total = entries.reduce((sum, item) => sum + item.product.price * item.quantity, 0);
+  const previousScrollTop = cartItems.scrollTop;
+  const units = getCartUnits();
+  const count = units.length;
+  const total = units.reduce((sum, unit) => sum + unit.product.price, 0);
 
   $("#cartCount").textContent = count;
   $("#drawerCount").textContent = `(${count})`;
   $("#cartTotal").textContent = money(total);
 
-  // Rebuild and explicitly show the product list so cart contents never appear blank.
+  // Render one visible row for every physical piece, so Cart (8) shows 8 rows,
+  // with a separate size selection and remove action for each piece.
   cartItems.replaceChildren();
   cartItems.hidden = count === 0;
   cartEmpty.hidden = count > 0;
@@ -341,35 +381,39 @@ function renderCart() {
   const checkoutFields = $("#checkoutFields");
   const proceedButton = $("#proceedCheckout");
   if (count === 0) {
-    if (checkoutFields) checkoutFields.hidden = true;
+    if (checkoutFields) {
+      checkoutFields.hidden = true;
+      checkoutFields.dataset.opened = "false";
+    }
     if (proceedButton) proceedButton.hidden = true;
   } else if (checkoutFields && checkoutFields.dataset.opened !== "true") {
     checkoutFields.hidden = true;
     if (proceedButton) proceedButton.hidden = false;
   }
 
-  entries.forEach(({product, quantity}) => {
+  units.forEach(({product, unitIndex, size}) => {
     const row = document.createElement("div");
-    row.className = "cart-line";
+    row.className = "cart-line cart-unit-line";
+    row.dataset.cartProductId = String(product.id);
+    row.dataset.cartUnitIndex = String(unitIndex);
     row.innerHTML = `
       <div class="cart-thumb"><img src="${product.image}" alt="${escapeHtml(product.name)}"></div>
       <div class="cart-product-details">
         <h4>${escapeHtml(product.name)}</h4>
         <div class="unit-price">${money(product.price)} / item</div>
-        <div class="cart-size-picker" role="group" aria-label="Choose size for ${escapeHtml(product.name)}">
+        <div class="cart-size-picker" role="group" aria-label="Choose size for item ${unitIndex + 1}: ${escapeHtml(product.name)}">
           <span class="cart-size-label">Size:</span>
-          ${["S","M","L","XL","XXL","3XL"].map(size => `<button type="button" class="size-button cart-size-button ${cartSizes[product.id] === size ? "selected" : ""}" data-cart-size="${size}" data-product-id="${product.id}" aria-pressed="${cartSizes[product.id] === size ? "true" : "false"}">${size}</button>`).join("")}
+          ${["S","M","L","XL","XXL","3XL"].map(itemSize => `<button type="button" class="size-button cart-size-button ${size === itemSize ? "selected" : ""}" data-unit-size="${itemSize}" data-product-id="${product.id}" data-unit-index="${unitIndex}" aria-pressed="${size === itemSize ? "true" : "false"}">${itemSize}</button>`).join("")}
         </div>
-        <div class="quantity-controls">
-          <button type="button" data-minus="${product.id}" aria-label="Decrease ${escapeHtml(product.name)} quantity">−</button>
-          <span>${quantity}</span>
-          <button type="button" data-plus="${product.id}" aria-label="Increase ${escapeHtml(product.name)} quantity">＋</button>
-          <button type="button" class="remove-button" data-remove="${product.id}">Remove</button>
+        <div class="quantity-controls cart-unit-controls">
+          <button type="button" class="cart-add-one" data-add-unit="${product.id}" aria-label="Add one more ${escapeHtml(product.name)}">＋ Add one</button>
+          <button type="button" class="remove-button" data-remove-unit="${product.id}" data-unit-index="${unitIndex}">Remove item</button>
         </div>
       </div>
-      <div class="line-price">${money(product.price * quantity)}</div>`;
+      <div class="line-price">${money(product.price)}</div>`;
     cartItems.appendChild(row);
   });
+  cartItems.scrollTop = previousScrollTop;
 }
 
 // In-app browser Back behavior: keep Back inside the storefront when a UI panel is open.
@@ -432,6 +476,13 @@ function showToast(message) {
 async function sendWhatsAppOrder() {
   const deliveryFields = $("#deliveryFields");
   if (deliveryFields) deliveryFields.hidden = false;
+  const missingUnitSize = getCartUnits().find(unit => !unit.size);
+  if (missingUnitSize) {
+    const row = cartItems.querySelector(`[data-cart-product-id="${missingUnitSize.product.id}"][data-cart-unit-index="${missingUnitSize.unitIndex}"]`);
+    if (row) row.scrollIntoView({ behavior: "smooth", block: "center" });
+    showToast(`Please select a size for every item. Missing size: ${missingUnitSize.product.name}.`);
+    return;
+  }
   const pincodeValidation = validatePincode({ showIncomplete: true });
   if (!pincodeValidation.valid) {
     const pincodeField = $("#pincode");
@@ -487,10 +538,10 @@ async function sendWhatsAppOrder() {
   }
 
   const total = entries.reduce((sum, item) => sum + item.product.price * item.quantity, 0);
-  const orderItems = entries.map(({product, quantity}) => ({
+  const orderItems = entries.map(({product, quantity, size}) => ({
     productName: product.name,
     productId: product.id,
-    size: cartSizes[product.id] || "",
+    size: size || "",
     quantity,
     unitPrice: product.price,
     lineTotal: product.price * quantity
@@ -529,10 +580,9 @@ async function sendWhatsAppOrder() {
 
     // Return the customer to the catalog and close the cart after submission.
     cart = {};
-    Object.keys(cartSizes).forEach(id => delete cartSizes[id]);
+    Object.keys(cartUnitSizes).forEach(id => delete cartUnitSizes[id]);
     renderCart();
     closeCart({ skipHistory: true });
-    Object.keys(cartSizes).forEach(productId => delete cartSizes[productId]);
     ["customerName", "mobileNumber", "houseBuilding", "landmark", "roadArea", "pincode", "city", "state"].forEach(id => {
       const field = $("#" + id);
       if (field) field.value = "";
@@ -834,11 +884,10 @@ const continueToDetails = $("#continueToDetails");
 if (continueToDetails) {
   continueToDetails.addEventListener("click", () => {
     clearValidationHighlights();
-    const entries = getCartEntries();
-    const missingSize = entries.find(({product}) => !cartSizes[product.id]);
+    const missingSize = getCartUnits().find(unit => !unit.size);
     if (missingSize) {
-      showToast(`Please select a size for ${missingSize.product.name} in the cart list.`);
-      const row = [...cartItems.querySelectorAll(".cart-line")].find(el => el.querySelector(`[data-product-id="${missingSize.product.id}"]`));
+      showToast(`Please select a size for every item. Missing size: ${missingSize.product.name}.`);
+      const row = cartItems.querySelector(`[data-cart-product-id="${missingSize.product.id}"][data-cart-unit-index="${missingSize.unitIndex}"]`);
       const sizePicker = row && row.querySelector(".cart-size-picker");
       if (sizePicker) {
         sizePicker.classList.add("size-invalid");
@@ -858,17 +907,20 @@ if (continueToDetails) {
 cartItems.addEventListener("click", event => {
   const button = event.target.closest("button");
   if (!button) return;
-  if (button.dataset.cartSize && button.dataset.productId) {
+  if (button.dataset.unitSize && button.dataset.productId !== undefined && button.dataset.unitIndex !== undefined) {
     const productId = Number(button.dataset.productId);
-    cartSizes[productId] = button.dataset.cartSize;
+    const unitIndex = Number(button.dataset.unitIndex);
+    if (!Array.isArray(cartUnitSizes[productId])) cartUnitSizes[productId] = [];
+    cartUnitSizes[productId][unitIndex] = button.dataset.unitSize;
+    const keepScroll = cartItems.scrollTop;
     renderCart();
-    const selectedRow = [...cartItems.querySelectorAll(".cart-line")].find(el => el.querySelector(`[data-product-id="${productId}"]`));
+    cartItems.scrollTop = keepScroll;
+    const selectedRow = cartItems.querySelector(`[data-cart-product-id="${productId}"][data-cart-unit-index="${unitIndex}"]`);
     if (selectedRow) selectedRow.querySelector(".cart-size-picker")?.classList.remove("size-invalid");
     return;
   }
-  if (button.dataset.minus) changeQuantity(Number(button.dataset.minus), -1);
-  if (button.dataset.plus) changeQuantity(Number(button.dataset.plus), 1);
-  if (button.dataset.remove) removeFromCart(Number(button.dataset.remove));
+  if (button.dataset.addUnit) addCartUnit(Number(button.dataset.addUnit));
+  if (button.dataset.removeUnit !== undefined) removeCartUnit(Number(button.dataset.removeUnit), Number(button.dataset.unitIndex));
 });
 searchInput.addEventListener("input", renderProducts);
 categoryFilter.addEventListener("change", renderProducts);
