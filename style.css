@@ -1949,3 +1949,85 @@ body { background:#fff; color:var(--ink); }
 @media (max-width: 700px) {
   .pincode-feedback { font-size: 12px; line-height: 1.5; }
 }
+
+
+/* FINAL CART DRAWER FIX — desktop + mobile */
+.overlay {
+  z-index: 10040 !important;
+}
+.cart-drawer {
+  z-index: 10050 !important;
+  top: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  height: 100vh !important;
+  height: 100dvh !important;
+  max-height: 100vh !important;
+  max-height: 100dvh !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  overscroll-behavior: contain;
+  padding-top: max(22px, env(safe-area-inset-top)) !important;
+  padding-bottom: max(22px, env(safe-area-inset-bottom)) !important;
+  background: #fff !important;
+}
+.cart-drawer[hidden],
+.overlay[hidden] { display: none !important; }
+.cart-head {
+  position: sticky !important;
+  top: 0 !important;
+  z-index: 6 !important;
+  flex: 0 0 auto !important;
+  background: #fff !important;
+  padding-top: 5px !important;
+}
+.cart-items {
+  flex: 1 0 auto !important;
+  min-height: 80px;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+#cartEmpty { flex: 0 0 auto; }
+#cartBottom {
+  flex: 0 0 auto !important;
+  overflow: visible !important;
+  padding-bottom: max(12px, env(safe-area-inset-bottom)) !important;
+}
+#checkoutFields, #deliveryFields { overflow: visible; }
+.cart-drawer .customer-input {
+  width: 100% !important;
+  max-width: 100% !important;
+  box-sizing: border-box !important;
+}
+@media (max-width: 700px) {
+  .cart-drawer {
+    left: 0 !important;
+    right: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    border-radius: 0 !important;
+    padding-left: 16px !important;
+    padding-right: 16px !important;
+    padding-top: max(14px, env(safe-area-inset-top)) !important;
+    padding-bottom: max(18px, env(safe-area-inset-bottom)) !important;
+    display: flex !important;
+    flex-direction: column !important;
+    overflow-y: auto !important;
+  }
+  .cart-head { padding-bottom: 12px !important; }
+  .cart-head h2 { font-size: 24px !important; }
+  .cart-items {
+    flex: 0 0 auto !important;
+    max-height: 38dvh !important;
+    overflow-y: auto !important;
+  }
+  #cartBottom { flex: 0 0 auto !important; }
+}
+@media (max-width: 390px) {
+  .cart-drawer { padding-left: 12px !important; padding-right: 12px !important; }
+  .cart-head h2 { font-size: 22px !important; }
+}
