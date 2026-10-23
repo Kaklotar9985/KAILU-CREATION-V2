@@ -1,0 +1,40 @@
+KAILU CREATION — Live Google Sheet Catalog Setup (Hindi)
+========================================================
+
+Website अब Group Code के आधार पर catalog group बनाती है, Color options दिखाती है, और Inventory > 0 वाले Size variants ही उपलब्ध रखती है। Catalog feed हर page load पर Google Apps Script endpoint से माँगा जाता है। नए products/size/color rows जोड़ने पर Website को दोबारा GitHub पर upload करने की जरूरत नहीं होगी।
+
+महत्वपूर्ण: यह setup आपकी पूरी Google Sheet को public नहीं करता। Feed केवल storefront fields और in-stock status भेजता है; exact stock count browser को नहीं भेजा जाता।
+
+एक बार का Setup
+----------------
+1. Google Apps Script का वही project खोलें जो KAILU Website के orders/checkout को पहले से संभालता है। script.js में GOOGLE_SCRIPT_URL उसी existing Web App URL को इस्तेमाल करता है।
+2. Apps Script editor में + के पास New file / Script चुनें और उसका नाम CatalogFeed रखें।
+3. इस folder की CatalogFeed.gs फाइल का पूरा code उस नई Script file में paste करके Save करें। मौजूदा Code.gs के doPost/order code को delete या replace न करें।
+4. मौजूदा Code.gs में पुराने doGet() को केवल इस version से बदलें:
+
+function doGet(e) {
+  if (e && e.parameter && e.parameter.action === "catalog") {
+    return serveCatalogFeed_(e);
+  }
+  return ContentService.createTextOutput("KAILU CREATION order endpoint is running.");
+}
+
+5. Apps Script में Deploy > Manage deployments खोलें। पहले से चल रही Web app deployment पर Edit (pencil) दबाएँ, Version में New version चुनें, फिर Deploy करें। Existing deployment को edit करने से script.js में URL बदलने की जरूरत नहीं होनी चाहिए।
+6. Access setting पहले जैसी रखें—Website orders जैसे चल रहे हैं वैसे ही रहने चाहिए। Execution account को Catalog Spreadsheet ID पढ़ने की अनुमति होनी चाहिए।
+7. Google Drive की product image/video files पर General access को “Anyone with the link — Viewer” रखें, वरना public website उन media files को दिखा नहीं पाएगी। Sheet को public करने की जरूरत नहीं है।
+8. Browser में Website खोलें और hard refresh करें (PC: Ctrl+F5). Network उपलब्ध होने पर Sheet feed आने के बाद 4 catalogs replace/refresh होंगे।
+
+Data Rules
+----------
+- Group Code + Product Name एक catalog group बनाते हैं।
+- उसी group में कई Colors हों तो color selector दिखता है।
+- हर Color के अंदर Inventory > 0 वाले Sizes ही दिखते हैं।
+- अगर एक group के सभी variants Inventory 0 हों, तो वह catalog छिप जाता है।
+- Sheet में नई rows जोड़ें/Inventory बदलें; अगले page load पर Website data फिर पढ़ती है।
+- यदि endpoint उपलब्ध न हो, Website built-in 4-catalog fallback दिखाती है; browser console में feed error लिखा जाएगा।
+
+जाँच
+----
+- Sheet tab का नाम अभी “Sheet1” माना गया है; अलग हो तो CatalogFeed.gs में CATALOG_SHEET_NAME बदलें।
+- Script endpoint पर orders के doPost function को जैसा है वैसा रखें; केवल doGet route बदलें और CatalogFeed.gs जोड़ें।
+- First live test: एक known row की Inventory को temporarily 0 करें, feed/website पर संबंधित size गायब होना चाहिए। Test के बाद सही stock value वापस डालें।

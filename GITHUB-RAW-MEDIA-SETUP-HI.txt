@@ -1,0 +1,18 @@
+KAILU CREATION — GitHub Raw Photos/Video Setup (PC + Mobile)
+
+Code changes:
+- Catalog 01 uses the exact direct GitHub Raw video URL supplied by the owner:
+  https://raw.githubusercontent.com/Kaklotar9985/KAILU-CREATION-V2/main/videos/Product_Videos/NavyBlue_Gown.mp4
+- Catalog 01 photo URLs use the same GitHub Raw folder and naming pattern:
+  images/Product_Photos/NavyBlue_Gown-1.webp ... NavyBlue_Gown-4.webp
+- Google Sheet asset URLs are normalized so GitHub "blob" links become raw.githubusercontent.com links.
+- A direct GitHub URL from the Sheet takes priority over the bundled local video. If the remote video fails, the local MP4 is tried as fallback.
+- Remote image failure falls back to the bundled catalog image.
+- The catalog index is declared before use to avoid a render-time JavaScript error.
+
+Important:
+1. The example photo/video paths must exist in the GitHub repository with exactly the same spelling and capitalization.
+2. For all other catalog products, enter their exact direct raw URLs in the Google Sheet image/video columns.
+3. Use links that start with https://raw.githubusercontent.com/ rather than GitHub page links /blob/.
+4. This package has passed JavaScript syntax checking. Live GitHub media playback still depends on the remote files existing and being accessible.
+5. Do not overwrite the live GitHub website until PC and mobile checks pass.
