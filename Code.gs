@@ -8,8 +8,30 @@ const HEADERS = [
   "State", "Payment Method", "Total (INR)", "Order Status"
 ];
 
-function doGet() {
-  return ContentService.createTextOutput("KAILU CREATION order endpoint is running.");
+function doGet(e) {
+  const p = (e && e.parameter) ? e.parameter : {};
+  if (p.action !== "orderStatus") {
+    return ContentService.createTextOutput("KAILU CREATION order endpoint is running.");
+  }
+
+  // JSONP is used only to confirm whether a random order request token was
+  // recorded. It does not return customer details and uses a fixed callback.
+  if (String(p.callback || "") !== "kailuMetaStatusCallback" ||
+      !/^[A-Za-z0-9_-]{20,100}$/.test(String(p.requestId || ""))) {
+    return ContentService.createTextOutput("/* invalid order status request */")
+      .setMimeType(ContentService.MimeType.JAVASCRIPT);
+  }
+
+  let result = { status: "pending" };
+  try {
+    const orderId = findOrderByRequestId_(String(p.requestId));
+    if (orderId) result = { status: "success", orderId };
+  } catch (err) {
+    console.error(err);
+    result = { status: "unavailable" };
+  }
+  return ContentService.createTextOutput("kailuMetaStatusCallback(" + JSON.stringify(result) + ");")
+    .setMimeType(ContentService.MimeType.JAVASCRIPT);
 }
 
 // Run this once manually after setting SHEET_ID to migrate the existing tab/header.
@@ -30,24 +52,39 @@ function setupOrdersSheet() {
 }
 
 function doPost(e) {
+  const p = (e && e.parameter) ? e.parameter : {};
+  let lock = null;
+  let lockAcquired = false;
   try {
-    const p = (e && e.parameter) ? e.parameter : {};
     const required = ["customerName", "mobileNumber", "size", "houseBuilding", "roadArea", "pincode", "city", "state", "total", "items"];
     const missing = required.filter(k => !String(p[k] || "").trim());
     if (missing.length) return output_({ok:false, message:"Missing fields: " + missing.join(", ")});
     if (!/^\d{6}$/.test(String(p.pincode).trim())) return output_({ok:false, message:"Invalid pincode"});
     if (!/^[6-9]\d{9}$/.test(String(p.mobileNumber).trim())) return output_({ok:false, message:"Invalid mobile number"});
 
+    const requestId = String(p.requestId || "").trim();
+    if (requestId && !/^[A-Za-z0-9_-]{20,100}$/.test(requestId)) {
+      return output_({ok:false, message:"Invalid request token"});
+    }
     const items = JSON.parse(p.items);
     if (!Array.isArray(items) || !items.length) return output_({ok:false, message:"No order items"});
-    const now = new Date();
-    const orderId = "KC-" + Utilities.formatDate(now, Session.getScriptTimeZone(), "yyyyMMdd-HHmmss") + "-" + String(Math.floor(Math.random() * 900) + 100);
-    const itemSummary = items.map(i => `${i.productName} | Size ${i.size} | Qty ${i.quantity} | ₹${i.lineTotal}`).join("\n");
+    const parsedTotal = Number(p.total);
+    if (!Number.isFinite(parsedTotal) || parsedTotal < 0) return output_({ok:false, message:"Invalid order total"});
+    items.forEach(item => {
+      if (!item || !String(item.productName || "").trim() || !Number.isFinite(Number(item.quantity)) ||
+          Number(item.quantity) < 1 || !Number.isFinite(Number(item.unitPrice)) || Number(item.unitPrice) < 0) {
+        throw new Error("Invalid order item details");
+      }
+    });
+
+    // Serialize writes and make retry submissions idempotent for the same token.
+    lock = LockService.getScriptLock();
+    lock.waitLock(30000);
+    lockAcquired = true;
 
     const ss = SpreadsheetApp.openById(SHEET_ID);
     let sheet = ss.getSheetByName(SHEET_NAME);
     if (!sheet) {
-      // If the spreadsheet only has one blank tab, reuse it instead of making a second tab.
       const allSheets = ss.getSheets();
       if (allSheets.length === 1 && allSheets[0].getLastRow() === 0) {
         sheet = allSheets[0];
@@ -57,6 +94,17 @@ function doPost(e) {
       }
     }
     ensureOrderSchema_(sheet);
+
+    let requestTokenColumn = 0;
+    if (requestId) {
+      requestTokenColumn = ensureRequestTokenColumn_(sheet);
+      const existingOrderId = findOrderByRequestId_(requestId, sheet, requestTokenColumn);
+      if (existingOrderId) return output_({ok:true, orderId:existingOrderId, duplicate:true});
+    }
+
+    const now = new Date();
+    const orderId = "KC-" + Utilities.formatDate(now, Session.getScriptTimeZone(), "yyyyMMdd-HHmmss") + "-" + String(Math.floor(Math.random() * 900) + 100);
+    const itemSummary = items.map(i => `${i.productName} | Size ${i.size} | Qty ${i.quantity} | ₹${i.lineTotal}`).join("\n");
 
     const row = [
       now,
@@ -72,13 +120,18 @@ function doPost(e) {
       safeCell_(p.city),
       safeCell_(p.state),
       "Cash on Delivery (COD)",
-      Number(p.total),
+      parsedTotal,
       "New"
     ];
+    if (requestTokenColumn) {
+      while (row.length < requestTokenColumn) row.push("");
+      row[requestTokenColumn - 1] = requestId;
+    }
     sheet.appendRow(row);
-    sheet.getRange(sheet.getLastRow(), 1).setNumberFormat("dd/MM/yyyy HH:mm:ss");
-    sheet.getRange(sheet.getLastRow(), 4).setNumberFormat("@"); // Keep mobile number as text.
-    sheet.getRange(sheet.getLastRow(), 10).setNumberFormat("@"); // Keep PIN code as text.
+    const savedRow = sheet.getLastRow();
+    sheet.getRange(savedRow, 1).setNumberFormat("dd/MM/yyyy HH:mm:ss");
+    sheet.getRange(savedRow, 4).setNumberFormat("@"); // Keep mobile number as text.
+    sheet.getRange(savedRow, 10).setNumberFormat("@"); // Keep PIN code as text.
 
     const body = [
       "New order received for KAILU CREATION", "",
@@ -94,17 +147,74 @@ function doPost(e) {
       "City: " + p.city,
       "State: " + p.state,
       "Payment: Cash on Delivery (COD)",
-      "Total: ₹" + p.total, "",
+      "Total: ₹" + parsedTotal, "",
       "Please confirm stock, delivery and COD availability."
     ].join("\n");
     if (STORE_EMAIL && STORE_EMAIL.indexOf("@") > 0 && STORE_EMAIL !== "YOUR_EMAIL@example.com") {
-      MailApp.sendEmail(STORE_EMAIL, `New KAILU CREATION order ${orderId} — ₹${p.total}`, body);
+      try {
+        MailApp.sendEmail(STORE_EMAIL, `New KAILU CREATION order ${orderId} — ₹${parsedTotal}`, body);
+      } catch (emailError) {
+        // The order is already saved. An email failure must not make the frontend
+        // treat a successfully recorded order as unsaved.
+        console.error("Order saved, but notification email failed:", emailError);
+      }
     }
     return output_({ok:true, orderId});
   } catch (err) {
     console.error(err);
     return output_({ok:false, message:String(err)});
+  } finally {
+    if (lockAcquired && lock) {
+      try { lock.releaseLock(); } catch (lockError) { console.error(lockError); }
+    }
   }
+}
+
+// Adds a hidden idempotency token column without changing the visible A:O schema.
+function ensureRequestTokenColumn_(sheet) {
+  const lastRow = sheet.getLastRow();
+  const scanTo = Math.min(Math.max(sheet.getLastColumn() + 1, HEADERS.length + 5, 20), 100);
+  if (scanTo > sheet.getMaxColumns()) sheet.insertColumnsAfter(sheet.getMaxColumns(), scanTo - sheet.getMaxColumns());
+  const headers = sheet.getRange(1, 1, 1, scanTo).getDisplayValues()[0];
+  for (let i = HEADERS.length; i < headers.length; i += 1) {
+    if (normalizeHeader_(headers[i]) === "request token") {
+      const column = i + 1;
+      if (column > sheet.getMaxColumns()) sheet.insertColumnsAfter(sheet.getMaxColumns(), column - sheet.getMaxColumns());
+      sheet.hideColumns(column);
+      return column;
+    }
+  }
+
+  for (let column = HEADERS.length + 1; column <= scanTo; column += 1) {
+    const header = String(headers[column - 1] || "").trim();
+    if (header) continue;
+    const hasData = lastRow > 1 && sheet.getRange(2, column, lastRow - 1, 1).getValues()
+      .some(row => String(row[0] == null ? "" : row[0]).trim() !== "");
+    if (hasData) continue;
+    if (column > sheet.getMaxColumns()) sheet.insertColumnsAfter(sheet.getMaxColumns(), column - sheet.getMaxColumns());
+    sheet.getRange(1, column).setValue("Request Token").setFontWeight("bold");
+    sheet.hideColumns(column);
+    return column;
+  }
+  throw new Error("Could not find an empty column for order request deduplication.");
+}
+
+function findOrderByRequestId_(requestId, knownSheet, knownColumn) {
+  const ss = knownSheet ? null : SpreadsheetApp.openById(SHEET_ID);
+  const sheet = knownSheet || ss.getSheetByName(SHEET_NAME);
+  if (!sheet || sheet.getLastRow() < 2) return "";
+  let tokenColumn = knownColumn || 0;
+  if (!tokenColumn) {
+    const lastCol = sheet.getLastColumn();
+    if (lastCol <= HEADERS.length) return "";
+    const headers = sheet.getRange(1, 1, 1, lastCol).getDisplayValues()[0];
+    const index = headers.findIndex((value, i) => i >= HEADERS.length && normalizeHeader_(value) === "request token");
+    if (index < 0) return "";
+    tokenColumn = index + 1;
+  }
+  const found = sheet.getRange(2, tokenColumn, sheet.getLastRow() - 1, 1)
+    .createTextFinder(String(requestId)).matchEntireCell(true).findNext();
+  return found ? String(sheet.getRange(found.getRow(), 2).getDisplayValue() || "") : "";
 }
 
 // Keeps the user's old order history while moving it into the requested A:O layout.
