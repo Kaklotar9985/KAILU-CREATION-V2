@@ -85,12 +85,10 @@ function validatePincode(options = {}) {
 }
 
 const products = [
-  {id:1, name:"Navy Blue Floral Printed Anarkali Kurta Pant Dupatta Set",      category:"3-Piece Kurti Set",   price:349,mrp:1499,rating:4.3,reviews:2500,image:"images/catalog-1-1.JPG",gallery:["images/catalog-1-2.JPG","images/catalog-1-3.JPG","images/catalog-1-4.JPG"],video:"videos/catalog-1.mp4",tag:"SALE",description:"Fabric:- Rayon",       color:"#e9dfd0"},
-  {id:2, name:"Mustard Yellow Floral Printed Kurta Pant Dupatta Set",          category:"3-Piece Kurti Set",   price:349,mrp:1499,rating:4.6,reviews:3076,image:"images/catalog-2-1.JPG",gallery:["images/catalog-2-2.JPG","images/catalog-2-3.JPG","images/catalog-2-4.JPG"],video:"videos/catalog-2.mp4",tag:"SALE",description:"Fabric:- Cotton Blend",color:"#f0e4c9"},
-  {id:3, name:"Cream Ethnic Printed Kurta with Bottomwear and Dupatta",        category:"3-Piece Kurti Set",   price:349,mrp:1499,rating:4.5,reviews:3108,image:"images/catalog-3-1.JPG",gallery:["images/catalog-3-2.JPG","images/catalog-3-3.JPG","images/catalog-3-4.JPG"],video:"videos/catalog-3.mp4",tag:"SALE",description:"Fabric:- Cotton Blend",color:"#e4e5d8"},
-  {id:4, name:"Black Kurti With Bottomwear",                                   category:"Corset",              price:349,mrp:1999,rating:4.7,reviews:3708,image:"images/catalog-4-1.JPG",gallery:["images/catalog-4-2.JPG","images/catalog-4-3.JPG","images/catalog-4-4.JPG"],video:"videos/catalog-4.mp4",tag:"SALE",description:"Fabric:- Rayon",       color:"#e4e5d8"},
-  {id:5, name:"Women Maroon Kurti Sharara Ethnic Wear Set",                    category:"Kurti With Sharara",  price:550,mrp:1999,rating:4.9,reviews:7608,image:"images/catalog-5-1.JPG",gallery:["images/catalog-5-2.JPG","images/catalog-5-3.JPG","images/catalog-5-4.JPG"],video:"videos/catalog-5.mp4",tag:"SALE",description:"Fabric:- Rayon",       color:"#e4e5d8"},
-  {id:6, name:"Women Black Floral Border Kurti with White Flared Sharara Set", category:"Kurti With Sharara",  price:550,mrp:1999,rating:4.8,reviews:7212,image:"images/catalog-6-1.JPG",gallery:["images/catalog-6-2.JPG","images/catalog-6-3.JPG","images/catalog-6-4.JPG"],video:"videos/catalog-6.mp4",tag:"SALE",description:"Fabric:- Rayon",       color:"#e4e5d8"}
+  {id:1,name:"Navy Blue Floral Printed Anarkali Kurta Pant Dupatta Set",category:"3-Piece Kurti Set",price:349,mrp:1499,rating:4.3,reviews:2500,image:"images/catalog-1-1.JPG",gallery:["images/catalog-1-2.JPG","images/catalog-1-3.JPG","images/catalog-1-4.JPG"],video:"videos/catalog-1.mp4",tag:"SALE",description:"Fabric:- Rayon",       color:"#e9dfd0"},
+  {id:2,name:"Mustard Yellow Floral Printed Kurta Pant Dupatta Set",    category:"3-Piece Kurti Set",price:349,mrp:1499,rating:4.6,reviews:3076,image:"images/catalog-2-1.JPG",gallery:["images/catalog-2-2.JPG","images/catalog-2-3.JPG","images/catalog-2-4.JPG"],video:"videos/catalog-2.mp4",tag:"SALE",description:"Fabric:- Cotton Blend",color:"#f0e4c9"},
+  {id:3,name:"Cream Ethnic Printed Kurta with Bottomwear and Dupatta",  category:"3-Piece Kurti Set",price:349,mrp:1499,rating:4.5,reviews:3108,image:"images/catalog-3-1.JPG",gallery:["images/catalog-3-2.JPG","images/catalog-3-3.JPG","images/catalog-3-4.JPG"],video:"videos/catalog-3.mp4",tag:"SALE",description:"Fabric:- Cotton Blend",color:"#e4e5d8"},
+  {id:4,name:"Black Kurti With Bottomwear",                             category:"Corset",           price:349,mrp:1999,rating:4.7,reviews:3708,image:"images/catalog-4-1.JPG",gallery:["images/catalog-4-2.JPG","images/catalog-4-3.JPG","images/catalog-4-4.JPG"],video:"videos/catalog-4.mp4",tag:"SALE",description:"Fabric:- Rayon",       color:"#e4e5d8"}
 ];
 
 const $ = (selector) => document.querySelector(selector);
@@ -107,185 +105,6 @@ const toast = $("#toast");
 let cart = {};
 const cartUnitSizes = {};
 let toastTimer;
-let productViewObserver = null;
-let checkoutTrackingSent = false;
-let searchTrackingTimer = null;
-let lastTrackedSearchValue = "";
-let currentOrderRequestId = null;
-let orderSubmissionInProgress = false;
-const viewedProductIds = new Set();
-const sentMetaEventKeys = new Set();
-
-// Meta Pixel helpers. Never send customer PII (name, mobile, or address) to Meta.
-function createMetaEventId(prefix = "event") {
-  let token;
-  try {
-    token = window.crypto && typeof window.crypto.randomUUID === "function"
-      ? window.crypto.randomUUID()
-      : Array.from(window.crypto.getRandomValues(new Uint8Array(16)), byte => byte.toString(16).padStart(2, "0")).join("");
-  } catch (_) {
-    token = `${Date.now().toString(36)}_${Math.random().toString(36).slice(2)}_${Math.random().toString(36).slice(2)}`;
-  }
-  return `${prefix}_${token}`;
-}
-
-function trackMetaEvent(eventName, parameters = {}, options = {}) {
-  if (typeof window.fbq !== "function") return false;
-  const eventId = options.eventID || createMetaEventId(eventName.toLowerCase());
-  const dedupeKey = options.dedupeKey ? `${eventName}:${options.dedupeKey}` : "";
-  if (dedupeKey) {
-    if (sentMetaEventKeys.has(dedupeKey)) return false;
-    try {
-      if (window.localStorage.getItem(`kailu_meta_sent_${dedupeKey}`) === "1") {
-        sentMetaEventKeys.add(dedupeKey);
-        return false;
-      }
-      window.localStorage.setItem(`kailu_meta_sent_${dedupeKey}`, "1");
-    } catch (_) {
-      // The in-memory guard below still prevents duplicates in this page session.
-    }
-    sentMetaEventKeys.add(dedupeKey);
-  }
-  window.fbq("track", eventName, parameters, { eventID: eventId });
-  return true;
-}
-
-function metaProductParameters(product, quantity = 1) {
-  return {
-    content_ids: [String(product.id)],
-    content_type: "product",
-    content_name: product.name,
-    contents: [{ id: String(product.id), quantity, item_price: Number(product.price) }],
-    value: Number((Number(product.price) * quantity).toFixed(2)),
-    currency: CURRENCY
-  };
-}
-
-function getMetaCartParameters() {
-  const entries = getCartEntries();
-  const contents = entries.map(({ product, quantity }) => ({
-    id: String(product.id), quantity, item_price: Number(product.price)
-  }));
-  const value = entries.reduce((sum, item) => sum + Number(item.product.price) * item.quantity, 0);
-  return {
-    content_ids: entries.map(item => String(item.product.id)),
-    content_type: "product",
-    contents,
-    num_items: entries.reduce((sum, item) => sum + item.quantity, 0),
-    value: Number(value.toFixed(2)),
-    currency: CURRENCY
-  };
-}
-
-function trackInitiateCheckout() {
-  if (checkoutTrackingSent || !getCartEntries().length) return;
-  const parameters = getMetaCartParameters();
-  trackMetaEvent("InitiateCheckout", parameters);
-  checkoutTrackingSent = true;
-}
-
-function observeProductForViewContent(card, product) {
-  if (viewedProductIds.has(String(product.id))) return;
-  if (!("IntersectionObserver" in window)) {
-    viewedProductIds.add(String(product.id));
-    trackMetaEvent("ViewContent", metaProductParameters(product));
-    return;
-  }
-  if (!productViewObserver) {
-    productViewObserver = new IntersectionObserver(entries => {
-      entries.forEach(entry => {
-        if (!entry.isIntersecting || entry.intersectionRatio < 0.35) return;
-        const productId = String(entry.target.dataset.metaProductId || "");
-        const product = products.find(item => String(item.id) === productId);
-        if (!product || viewedProductIds.has(productId)) {
-          productViewObserver.unobserve(entry.target);
-          return;
-        }
-        viewedProductIds.add(productId);
-        productViewObserver.unobserve(entry.target);
-        trackMetaEvent("ViewContent", metaProductParameters(product));
-      });
-    }, { threshold: [0.35] });
-  }
-  card.dataset.metaProductId = String(product.id);
-  productViewObserver.observe(card);
-}
-
-// Verify the backend write with bounded JSONP polling. The status endpoint only
-// returns an Order ID after the matching request token is present in Google Sheets.
-// An onload-without-callback usually means an old deployment or invalid response;
-// retry quickly instead of leaving the customer on "Submitting order..." for 20+ sec.
-function verifyOrderSaved(requestId, options = {}) {
-  const attempts = Number.isInteger(options.attempts) ? options.attempts : 8;
-  const attemptTimeoutMs = Number.isInteger(options.attemptTimeoutMs) ? options.attemptTimeoutMs : 2400;
-  const retryDelayMs = Number.isInteger(options.retryDelayMs) ? options.retryDelayMs : 250;
-  const maxWaitMs = Number.isInteger(options.maxWaitMs) ? options.maxWaitMs : 14000;
-  return new Promise(resolve => {
-    let attempt = 0;
-    let finished = false;
-    const deadline = Date.now() + maxWaitMs;
-    const settle = result => {
-      if (finished) return;
-      finished = true;
-      resolve(result || null);
-    };
-    const check = () => {
-      if (finished) return;
-      if (attempt >= attempts || Date.now() >= deadline) {
-        settle(null);
-        return;
-      }
-      attempt += 1;
-      let settled = false;
-      const script = document.createElement("script");
-      let timeoutId = null;
-      let onloadFallbackId = null;
-      const finish = result => {
-        if (settled || finished) return;
-        settled = true;
-        if (timeoutId !== null) window.clearTimeout(timeoutId);
-        if (onloadFallbackId !== null) window.clearTimeout(onloadFallbackId);
-        script.onload = null;
-        script.onerror = null;
-        script.remove();
-        if (window.kailuMetaStatusCallback === callback) {
-          try { delete window.kailuMetaStatusCallback; } catch (_) { window.kailuMetaStatusCallback = undefined; }
-        }
-        if (result && result.status === "success" && result.orderId) {
-          settle(result);
-          return;
-        }
-        if (attempt < attempts && Date.now() < deadline) {
-          // Progressive delay gives a slow Apps Script enough time to finish the
-          // Sheet write without hammering the status endpoint on every 300 ms.
-          const nextDelay = Math.min(retryDelayMs * attempt, 1800);
-          window.setTimeout(check, Math.min(nextDelay, Math.max(0, deadline - Date.now())));
-        } else {
-          settle(null);
-        }
-      };
-      const callback = result => finish(result);
-      window.kailuMetaStatusCallback = callback;
-      script.async = true;
-      script.onerror = () => finish(null);
-      // If a stale Apps Script deployment returns a plain page instead of JSONP,
-      // don't wait for the full timeout on every attempt.
-      script.onload = () => {
-        onloadFallbackId = window.setTimeout(() => finish(null), 200);
-      };
-      timeoutId = window.setTimeout(() => finish(null), Math.min(attemptTimeoutMs, Math.max(200, deadline - Date.now())));
-      const params = new URLSearchParams({
-        action: "orderStatus",
-        requestId,
-        callback: "kailuMetaStatusCallback",
-        _: String(Date.now())
-      });
-      script.src = `${GOOGLE_SCRIPT_URL}?${params.toString()}`;
-      document.head.appendChild(script);
-    };
-    check();
-  });
-}
 
 const money = (amount) => new Intl.NumberFormat("en-IN", {
   style: "currency", currency: CURRENCY, maximumFractionDigits: 2
@@ -369,7 +188,6 @@ function renderProducts() {
         </div>
       </div>`;
     productGrid.appendChild(card);
-    observeProductForViewContent(card, product);
 
     // Optional local media: missing photos or videos are hidden gracefully.
     card.querySelectorAll("[data-gallery-photo]").forEach(thumb => {
@@ -433,7 +251,6 @@ function addToCart(id) {
   cart[id] = (cart[id] || 0) + 1;
   cartUnitSizes[id].push("");
   renderCart();
-  trackMetaEvent("AddToCart", metaProductParameters(product, 1));
   // Add to Cart should only show a brief confirmation; keep the catalog visible.
   showToast(`${product.name} added to your cart.`);
 
@@ -446,7 +263,6 @@ function buyNow(id) {
   cartUnitSizes[id] = [""];
   renderCart();
   openCart();
-  trackInitiateCheckout();
   startSizeStep();
   showToast("Select a clothing size first.");
 }
@@ -620,25 +436,7 @@ function replaceKailuUiHistory(uiName) {
     delete currentState.kailuUiToken;
   }
   const nextUrl = `${window.location.pathname}${window.location.search}#products`;
-  // Local file:// testing and some embedded browsers can reject History API
-  // URL updates. UI changes (especially the order success modal) must still work.
-  try {
-    history.replaceState(currentState, "", nextUrl);
-  } catch (error) {
-    console.warn("KAILU UI history update skipped; continuing without history state.", error);
-  }
-}
-
-function showOrderSuccessModal() {
-  const successModal = $("#orderSuccessModal");
-  if (!successModal) return false;
-
-  // Show the confirmed success UI before any optional history/focus/scroll work.
-  // A browser History API error must never prevent the customer seeing success.
-  successModal.hidden = false;
-  document.body.classList.add("success-modal-open");
-  replaceKailuUiHistory("success");
-  return true;
+  history.replaceState(currentState, "", nextUrl);
 }
 
 function scrollToCatalogList() {
@@ -662,22 +460,20 @@ function closeCart(options = {}) {
   cartDrawer.hidden = true;
   overlay.hidden = true;
   document.body.style.overflow = "";
-  checkoutTrackingSent = false;
   if (!options.skipHistory && !options.fromPopstate && wasOpen &&
       history.state && history.state.kailuUI === "cart") {
     history.back();
   }
   if (!options.fromPopstate) $("#cartShortcut").focus();
 }
-function showToast(message, durationMs = 2100) {
+function showToast(message) {
   toast.textContent = message;
   toast.classList.add("show");
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => toast.classList.remove("show"), durationMs);
+  toastTimer = setTimeout(() => toast.classList.remove("show"), 2100);
 }
 
 async function sendWhatsAppOrder() {
-  if (orderSubmissionInProgress) return;
   const deliveryFields = $("#deliveryFields");
   if (deliveryFields) deliveryFields.hidden = false;
   const missingUnitSize = getCartUnits().find(unit => !unit.size);
@@ -750,10 +546,7 @@ async function sendWhatsAppOrder() {
     unitPrice: product.price,
     lineTotal: product.price * quantity
   }));
-  if (!currentOrderRequestId) currentOrderRequestId = createMetaEventId("order");
-  const requestId = currentOrderRequestId;
   const payload = new URLSearchParams({
-    requestId,
     store: "KAILU CREATION™",
     customerName: name,
     mobileNumber,
@@ -773,120 +566,19 @@ async function sendWhatsAppOrder() {
 
   const submitButton = $("#whatsappOrder");
   const originalText = submitButton.innerHTML;
-  orderSubmissionInProgress = true;
   submitButton.disabled = true;
-  submitButton.setAttribute("aria-busy", "true");
   submitButton.textContent = "Submitting order…";
-  let orderConfirmed = false;
   try {
-    // Run the Sheet status check and POST together. Apps Script POST is sent in
-    // no-cors mode, so the browser cannot read its JSON response. In this store's
-    // deployed setup the Order row is saved successfully, but the separate status
-    // endpoint may be an older deployment and return no JSONP callback. When the
-    // POST completes, allow a brief final status check, then accept that completed
-    // submission instead of falsely telling the customer the saved order failed.
-    const statusPromise = verifyOrderSaved(requestId, {
-      attempts: 4,
-      attemptTimeoutMs: 1000,
-      retryDelayMs: 220,
-      maxWaitMs: 4200
-    });
-    const postPromise = fetch(GOOGLE_SCRIPT_URL, {
+    // Apps Script is cross-origin; no-cors allows a simple form POST.
+    // The browser cannot read the response, so verify a test order in Sheets/email.
+    await fetch(GOOGLE_SCRIPT_URL, {
       method: "POST",
       mode: "no-cors",
       body: payload
-    }).then(
-      () => ({ completed: true }),
-      error => ({ completed: false, error })
-    );
-
-    const firstResult = await Promise.race([
-      statusPromise.then(result => ({ source: "status", result })),
-      postPromise.then(result => ({ source: "post", result }))
-    ]);
-
-    let savedOrder = null;
-
-    if (firstResult.source === "status" && firstResult.result && firstResult.result.status === "success") {
-      savedOrder = firstResult.result;
-    } else if (firstResult.source === "post" && firstResult.result.completed) {
-      // Prefer the real Sheet Order ID when the status callback is available.
-      // Don't keep the customer waiting for a broken/old status endpoint.
-      const lateStatus = await Promise.race([
-        statusPromise,
-        new Promise(resolve => window.setTimeout(() => resolve(null), 700))
-      ]);
-      if (lateStatus && lateStatus.status === "success") {
-        savedOrder = lateStatus;
-      } else {
-        savedOrder = { status: "accepted", orderId: "", confirmationSource: "post-completed" };
-      }
-    } else if (firstResult.source === "status") {
-      // Status polling exhausted before the POST finished. Wait a bounded time for
-      // the POST; a completed request is the fallback for this known endpoint issue.
-      const latePost = await Promise.race([
-        postPromise,
-        new Promise(resolve => window.setTimeout(() => resolve({ completed: false, timedOut: true }), 8000))
-      ]);
-      if (latePost && latePost.completed) {
-          savedOrder = { status: "accepted", orderId: "", confirmationSource: "post-completed" };
-      }
-    } else {
-      // A transport error alone is not proof that the order failed; the status
-      // endpoint may still confirm that the request reached Google Sheets.
-      const lateStatus = await statusPromise;
-      if (lateStatus && lateStatus.status === "success") savedOrder = lateStatus;
-    }
-
-    if (!savedOrder) {
-      showToast("We could not reach the order system. Please check Google Sheets before trying again to avoid submitting a duplicate order.", 7500);
-      submitButton.innerHTML = originalText;
-      submitButton.disabled = false;
-      submitButton.removeAttribute("aria-busy");
-      orderSubmissionInProgress = false;
-      return;
-    }
-    orderConfirmed = true;
-
-    // A backend Order ID is used when supplied. If the deployment's status
-    // endpoint is unavailable but the POST completed, use the unique request ID
-    // only as the tracking/deduplication reference (not as a claimed Sheet Order ID).
-    // COD Purchase means the order request was submitted; it does NOT mean paid.
-    const hasBackendOrderId = Boolean(savedOrder.orderId && savedOrder.confirmationSource !== "post-completed");
-    const eventReference = String(hasBackendOrderId ? savedOrder.orderId : requestId);
-    const orderDetails = {
-      ...getMetaCartParameters(),
-      value: Number(total.toFixed(2)),
-      currency: CURRENCY,
-      ...(hasBackendOrderId ? { order_id: String(savedOrder.orderId) } : { order_reference: requestId }),
-      payment_method: "COD",
-      order_status: "COD Order Submitted"
-    };
-    try {
-      trackMetaEvent("Lead", orderDetails, { eventID: requestId, dedupeKey: requestId });
-    } catch (pixelError) {
-      console.warn("Meta Lead event could not be sent; order request was submitted.", pixelError);
-    }
-
-    // The same request token is the duplicate guard even when the legacy status
-    // endpoint does not reveal a Sheet Order ID. It remains stable for this order.
-    try {
-      trackMetaEvent("Purchase", orderDetails, {
-        eventID: eventReference,
-        dedupeKey: requestId
-      });
-    } catch (pixelError) {
-      console.warn("Meta Purchase event could not be sent; order request was submitted.", pixelError);
-    }
-
+    });
     submitButton.textContent = "Order Request Sent";
 
-    // Show success immediately after backend confirmation, independently of
-    // non-critical cart reset, scroll, or cleanup operations.
-    const successModal = $("#orderSuccessModal");
-    if (successModal) showOrderSuccessModal();
-
-    // Return the customer to the catalog and close the cart after verified save.
+    // Return the customer to the catalog and close the cart after submission.
     cart = {};
     Object.keys(cartUnitSizes).forEach(id => delete cartUnitSizes[id]);
     renderCart();
@@ -895,43 +587,27 @@ async function sendWhatsAppOrder() {
       const field = $("#" + id);
       if (field) field.value = "";
     });
-    currentOrderRequestId = null;
     $("#products").scrollIntoView({ behavior: "smooth", block: "start" });
+    const successModal = $("#orderSuccessModal");
     if (successModal) {
+      replaceKailuUiHistory("success");
+      successModal.hidden = false;
+      document.body.classList.add("success-modal-open");
       const continueButton = $("#continueShoppingSuccess");
-      if (continueButton) continueButton.focus({ preventScroll: true });
+      if (continueButton) continueButton.focus({preventScroll:true});
     } else {
-      showToast("Order Request Submitted! Your order was saved successfully.");
+      showToast("Order request sent. Check your Google Sheet and email.");
     }
-    orderSubmissionInProgress = false;
   } catch (error) {
-    console.error("Order submission flow error:", error);
-    if (orderConfirmed) {
-      // The Sheet already confirmed the Order. Do not tell the customer it failed
-      // just because a later UI cleanup step had a problem.
-      const successModal = $("#orderSuccessModal");
-      if (successModal) {
-        showOrderSuccessModal();
-        const continueButton = $("#continueShoppingSuccess");
-        if (continueButton) continueButton.focus({ preventScroll: true });
-      } else {
-        showToast("Order Request Submitted! Your order was saved successfully.");
-      }
-      orderSubmissionInProgress = false;
-    } else {
-      showToast("We could not reach the order system. Please check Google Sheets before trying again to avoid submitting a duplicate order.", 7500);
-      orderSubmissionInProgress = false;
-    }
+    showToast("Could not send order. Check internet and try again.");
     submitButton.innerHTML = originalText;
     submitButton.disabled = false;
-    submitButton.removeAttribute("aria-busy");
     return;
   }
   setTimeout(() => {
     submitButton.innerHTML = originalText;
     submitButton.disabled = false;
-    submitButton.removeAttribute("aria-busy");
-  }, 1500);
+  }, 3500);
 }
 
 const continueShoppingSuccess = $("#continueShoppingSuccess");
@@ -954,11 +630,7 @@ if (continueShoppingSuccess) {
 document.addEventListener("keydown", event => {
   const successModal = $("#orderSuccessModal");
   if (event.key === "Escape" && successModal && !successModal.hidden) {
-    // Per store requirements, only the explicit Continue Shopping button closes
-    // a success modal. Escape must not dismiss a confirmed order message.
-    event.preventDefault();
-    const continueButton = $("#continueShoppingSuccess");
-    if (continueButton) continueButton.focus({ preventScroll: true });
+    returnToCatalogList();
   }
 });
 
@@ -1250,20 +922,7 @@ cartItems.addEventListener("click", event => {
   if (button.dataset.addUnit) addCartUnit(Number(button.dataset.addUnit));
   if (button.dataset.removeUnit !== undefined) removeCartUnit(Number(button.dataset.removeUnit), Number(button.dataset.unitIndex));
 });
-searchInput.addEventListener("input", () => {
-  renderProducts();
-  window.clearTimeout(searchTrackingTimer);
-  searchTrackingTimer = window.setTimeout(() => {
-    const query = searchInput.value.trim();
-    if (!query) {
-      lastTrackedSearchValue = "";
-      return;
-    }
-    if (query.toLowerCase() === lastTrackedSearchValue.toLowerCase()) return;
-    lastTrackedSearchValue = query;
-    trackMetaEvent("Search", { search_string: query, content_category: "Product Catalog" });
-  }, 650);
-});
+searchInput.addEventListener("input", renderProducts);
 categoryFilter.addEventListener("change", renderProducts);
 sortSelect.addEventListener("change", renderProducts);
 $("#cartShortcut").addEventListener("click", () => {
@@ -1273,7 +932,6 @@ $("#cartShortcut").addEventListener("click", () => {
 const proceedCheckout = $("#proceedCheckout");
 if (proceedCheckout) {
   proceedCheckout.addEventListener("click", () => {
-    trackInitiateCheckout();
     const checkoutFields = $("#checkoutFields");
     checkoutFields.hidden = false;
     checkoutFields.dataset.opened = "true";
@@ -1286,21 +944,6 @@ const continueShoppingEmpty = $("#continueShoppingEmpty");
 if (continueShoppingEmpty) continueShoppingEmpty.addEventListener("click", closeCart);
 overlay.addEventListener("click", closeCart);
 $("#whatsappOrder").addEventListener("click", sendWhatsAppOrder);
-
-// Only track Contact when a real external contact action is present and clicked.
-// The current supplied HTML has no clickable WhatsApp/tel/mailto link, so this
-// remains dormant until such a link exists; placing an order is tracked as Lead.
-document.addEventListener("click", event => {
-  const link = event.target instanceof Element ? event.target.closest("a[href]") : null;
-  if (!link) return;
-  const href = link.getAttribute("href") || "";
-  let channel = "";
-  if (/^https?:\/\/(?:wa\.me|api\.whatsapp\.com|web\.whatsapp\.com)(?:\/|$)/i.test(href)) channel = "WhatsApp";
-  else if (/^tel:/i.test(href)) channel = "Phone";
-  else if (/^mailto:/i.test(href)) channel = "Email";
-  if (channel) trackMetaEvent("Contact", { content_name: channel });
-});
-
 document.addEventListener("keydown", event => {
   if (event.key === "Escape" && !cartDrawer.hidden) closeCart();
 });
@@ -1315,17 +958,10 @@ window.addEventListener("popstate", () => {
 
   const successModal = $("#orderSuccessModal");
   if (successModal && !successModal.hidden) {
-    // Keep a confirmed success modal open on browser Back. The customer closes
-    // it only through Continue Shopping, which is the explicit UI action.
-    replaceKailuUiHistory("success");
-    try {
-      const state = history.state && typeof history.state === "object" ? { ...history.state } : {};
-      state.kailuUI = "success";
-      state.kailuUiToken = Date.now();
-      history.pushState(state, "", window.location.href);
-    } catch (error) {
-      console.warn("Could not restore success-modal history guard.", error);
-    }
+    successModal.hidden = true;
+    document.body.classList.remove("success-modal-open");
+    closeCart({ skipHistory: true, fromPopstate: true });
+    scrollToCatalogList();
     return;
   }
 

@@ -2086,7 +2086,3 @@ body { background:#fff; color:var(--ink); }
   padding: 0 9px !important;
   flex: 0 0 auto !important;
 }
-
-
-/* Keep order status messages visible above the cart drawer overlay. */
-.toast { z-index: 11000 !important; }
