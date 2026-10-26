@@ -203,8 +203,13 @@ function renderProducts() {
     $$(".catalog-rail-thumb", card).forEach((button, index) => {
       const media = displayThumbs[index];
       const img = $("img", button);
-      button.hidden = true;
-      img.addEventListener("load", () => { button.hidden = false; });
+      // Do not use the HTML hidden attribute while loading: browsers may defer
+      // loading an image inside a display:none ancestor, leaving every rail item
+      // hidden forever. Keep the grid slot reserved but visually hidden until load.
+      button.hidden = false;
+      button.style.visibility = "hidden";
+      img.loading = "eager";
+      img.addEventListener("load", () => { button.style.visibility = "visible"; });
       configureImage(img, media.url, media.fallback, () => {
         button.hidden = true;
         const remaining = $$(".catalog-rail-thumb", card).filter(thumb => !thumb.hidden);
@@ -363,9 +368,11 @@ function renderDetailThumbnails() {
     } else {
       const image = document.createElement("img");
       image.alt = "";
-      image.loading = "lazy";
-      button.hidden = true;
-      image.addEventListener("load", () => { button.hidden = false; });
+      // A hidden button prevents lazy images from loading in several browsers.
+      // Keep the thumbnail in layout, then reveal it only after a valid image loads.
+      button.style.visibility = "hidden";
+      image.loading = "eager";
+      image.addEventListener("load", () => { button.style.visibility = "visible"; });
       button.appendChild(image);
       imageToConfigure = image;
     }
