@@ -40,7 +40,7 @@
         <p>खूबसूरत एथनिक कलेक्शन, सोच-समझकर तैयार की गई पैकेजिंग और हर ऑर्डर में खास एहसास। अपनी पसंद चुनें और ऑर्डर करें।</p>
         <div class="hero-actions">
           <a href="#products" class="primary-link">Discover the Collection <span>↗</span></a>
-          <span class="hero-price"><strong>₹349</strong><small>per catalog</small></span>
+          <span class="hero-price"><strong>Catalog pricing</strong><small>prices as listed</small></span>
         </div>
         <div class="hero-promise"><span>✦</span> A little tradition. A lot of you.</div>
         <div class="hero-assurances" aria-label="KAILU CREATION shopping highlights">
@@ -62,7 +62,7 @@
           <img src="images/catalog-3-1.JPG" alt="Sage green ethnic suit" loading="eager">
           <span class="front-label">Made to feel beautiful</span>
         </div>
-        <div class="floating-price"><span class="price-sparkle">✳</span><span><small>YOUR NEXT FAVOURITE</small><strong>From ₹349</strong></span></div>
+        <div class="floating-price"><span class="price-sparkle">✳</span><span><small>YOUR NEXT FAVOURITE</small><strong>Explore Catalogs</strong></span></div>
         <div class="brand-packaging-card" aria-label="KAILU CREATION™ branded luxury shopping bag">
           <img src="images/kailu-shopping-bag-tm.webp" alt="Official KAILU CREATION™ luxury shopping bag" loading="eager">
           <span>THE KAILU EXPERIENCE</span>
@@ -78,7 +78,7 @@
     <section class="shop-section" id="products">
       <div class="section-heading">
         <div><span class="eyebrow">OUR ETHNIC COLLECTION</span><h2>Shop Catalogs</h2></div>
-        <p id="productSummary">Catalog prices as listed in the catalog</p>
+        <p id="productSummary" aria-live="polite">Loading latest catalog from Excel…</p>
       </div>
       <div class="toolbar">
         <label class="search-box"><span>⌕</span><input id="searchInput" type="search" placeholder="Search products..." aria-label="Search products"></label>
@@ -101,7 +101,7 @@
     <section class="trust-strip" id="why-kailu">
       <div><span>✓</span><p><strong>Easy Cash on Delivery (COD) Order</strong><small>Order in a few clicks</small></p></div>
       <div><span>♡</span><p><strong>Direct Contact</strong><small>Chat with us to order</small></p></div>
-      <div><span>↗</span><p><strong>Price you will love</strong><small>Each catalog only ₹349</small></p></div>
+      <div><span>↗</span><p><strong>Price you will love</strong><small>Prices shown from the latest catalog list</small></p></div>
     </section>
   </main>
 
@@ -169,7 +169,8 @@
   </div>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
   <script src="pincode-serviceability.js"></script>
+  <!-- Backup snapshot only. catalog-sync.js loads the live deployed Excel workbook first. -->
   <script src="products-data.js"></script>
-  <script src="script.js"></script>
+  <script src="catalog-sync.js?v=excel-catalog-sync-20261026"></script>
 </body>
 </html>

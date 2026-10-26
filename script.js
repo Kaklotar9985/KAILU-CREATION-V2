@@ -1,5 +1,6 @@
 /* KAILU CREATION storefront.
- * Product and variant values are generated from the supplied Excel catalog in products-data.js.
+ * catalog-sync.js loads the deployed Excel workbook as the primary catalog source.
+ * products-data.js is retained only as last-known-good fallback data.
  * Keep the current Apps Script order contract and pincode data source intact.
  */
 const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzoDLyc2YwBgl_KnTio5LVKdZQ-GsLTvKQWMi1Uhg4zodfSt2sWtSn0a2SzO8RjCcbyHw/exec";
@@ -150,7 +151,23 @@ function renderProducts() {
   const empty = $("#emptyProducts");
   if (empty) empty.hidden = visible.length !== 0;
   const summary = $("#productSummary");
-  if (summary) summary.textContent = `${visible.length} catalog${visible.length === 1 ? "" : "s"} to explore`;
+  if (summary) {
+    const countText = `${visible.length} catalog${visible.length === 1 ? "" : "s"} to explore`;
+    const syncStatus = window.KAILU_CATALOG_SYNC_STATUS || null;
+    if (syncStatus?.ok) {
+      summary.textContent = `${countText} · Synced from Excel`;
+      summary.dataset.syncState = "success";
+      summary.title = syncStatus.syncedAt ? `Excel synced at ${new Date(syncStatus.syncedAt).toLocaleString()}` : "Catalog data loaded from Excel";
+    } else if (syncStatus && syncStatus.ok === false) {
+      summary.textContent = `${countText} · Excel sync unavailable; showing saved data`;
+      summary.dataset.syncState = "warning";
+      summary.title = syncStatus.detail || syncStatus.message || "Excel catalog could not be refreshed.";
+    } else {
+      summary.textContent = countText;
+      summary.removeAttribute("data-sync-state");
+      summary.removeAttribute("title");
+    }
+  }
 
   visible.forEach(product => {
     const variant = firstAvailableVariant(product);

@@ -43,3 +43,25 @@ Local preview
 4. Browserમાં `http://localhost:8000` ખોલો.
 
 નોંધ: Catalog URLs Excelમાંથી જ લેવાય છે. GitHub remote URL ઉપલબ્ધ ન હોય તો packageમાં રહેલી matching local photo/video fallback વપરાય છે; કોઈ ઉપલબ્ધ source ન હોય તો ખોટી image/video દર્શાવવાને બદલે તે item છુપાય છે.
+
+
+============================================================
+AUTOMATIC EXCEL CATALOG SYNC (ADDED)
+============================================================
+
+Catalog Data હવે Website ખૂલતી વખતે deployed file "Kailu Creation Catalog List.xlsx" માંથી load કરવાનો પ્રયાસ કરે છે. SheetJS parser official CDN પરથી version 0.20.3 load થાય છે; જો CDN ઉપલબ્ધ ન હોય તો loader છેલ્લી સાચવેલી catalog અથવા bundled backup પર પાછો ફરે છે. Excel rowsમાંથી 20 columns map થાય છે અને Group Code + common SKU base પ્રમાણે size variants બનાવાય છે. Products/variants JavaScriptમાં હાથેથી update કરવાની જરૂર નથી.
+
+EXCEL UPDATE કરવાની પ્રક્રિયા:
+1. તમારી updated "Kailu Creation Catalog List.xlsx" ફાઇલ Website repositoryની root folderમાં, હાલની Excel ફાઇલના એ જ નામથી upload/replace કરો.
+2. GitHubમાં Commit/Push કરો (અથવા તમારી hostingની publishing પ્રક્રિયા પૂરી થવા દો).
+3. Website ફરી ખોલો અથવા Refresh કરો. Loader Excelને cache-busting URLથી અને cache:no-store સાથે fetch કરે છે. Catalog Summaryમાં "Synced from Excel" દેખાય તો નવી Excel load થઈ છે.
+4. Sync નિષ્ફળ થાય અથવા workbook empty/invalid હોય તો ખાલી catalog apply થતો નથી: છેલ્લે સફળતાપૂર્વક synced browser cache, અથવા bundled backup snapshot ઉપયોગમાં લેવાય છે. Catalog Summaryમાં warning અને hover/titleમાં વિગત દેખાશે.
+
+મહત્વપૂર્ણ મર્યાદા: Static GitHub Pages તમારા કમ્પ્યુટરની local Excel ફાઇલ વાંચી શકતું નથી અને local file save થતાં Website પર આપમેળે upload પણ કરી શકતું નથી. Updated Excelને repository/hosting પર upload અને publish કરવી જરૂરી છે. ત્યાર પછી Website નવી Excelને પોતાની રીતે વાંચે છે; products-data.js અથવા script.jsમાં Product Data હાથેથી બદલવાની જરૂર નથી.
+
+Excel Data Rules:
+- મુખ્ય Sheet: "Kailu Creation Catalog List" (ન મળે તો workbookની પહેલી sheet).
+- તમામ 20 જરૂરી headers હાજર હોવા જોઈએ. SKU duplicate હોય, size rowsમાં product details conflict થાય અથવા workbook empty હોય તો નવી data reject થાય છે જેથી અગાઉની working catalog ખોટી રીતે delete ન થાય.
+- Product-level name/category/color/tag/fabric/description દરેક size rowમાં એકસરખાં રાખો. Image/Video links બદલતા હોય તો તે groupની rowsમાં consistent રાખો.
+- Excelની image/video link પહેલા વપરાય છે; ખાલી link હોય તો images/Product_Photos/<base-SKU>-N.webp અને videos/Product_Videos/<base-SKU>.mp4 fallback શોધાય છે. Missing media UIમાંથી hide થાય છે.
+- products-data.js હવે live source નથી; તે માત્ર first-load/sync-failure backup snapshot તરીકે રહે છે.
