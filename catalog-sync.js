@@ -15,7 +15,8 @@
     "https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js",
     "https://unpkg.com/xlsx@0.18.5/dist/xlsx.full.min.js"
   ];
-  const APP_SCRIPT_NAME = "script.js";
+  const CDN_TIMEOUT_MS = 7000;
+  const WORKBOOK_TIMEOUT_MS = 12000;
   const EXPECTED_COLUMNS = [
     "Group Code", "Category", "Product Name", "Sku", "Size", "Color", "Inventory",
     "MRP Price", "Sell Price", "Rating", "Reviews", "tag", "Fabric",
@@ -130,10 +131,18 @@
 
       const baseSku = first.__baseSku;
       const groupCode = first.__groupCode;
-      const images = IMAGE_COLUMNS.map((column, index) => ({
-        url: chosenUrls[column] || "",
-        fallback: `images/Product_Photos/${baseSku}-${index + 1}.webp`
-      }));
+      const images = IMAGE_COLUMNS.map((column, index) => {
+        const fallback = `images/Product_Photos/${baseSku}-${index + 1}.webp`;
+        const thumbnailFallback = `images/Product_Thumbnails/${baseSku}-${index + 1}-thumb.webp`;
+        const repoRaw = "https://raw.githubusercontent.com/Kaklotar9985/KAILU-CREATION-V2/main/";
+        return {
+          url: chosenUrls[column] || "",
+          fallback,
+          thumbnailFallback,
+          remoteFallback: repoRaw + fallback,
+          remoteThumbnailFallback: repoRaw + thumbnailFallback
+        };
+      });
       const uniqueVariants = variants.map(item => ({
         sku: item.__sku,
         size: item.__size,
@@ -165,6 +174,7 @@
         images,
         videoUrl: chosenUrls["Video Link"],
         localVideo: `videos/Product_Videos/${baseSku}.mp4`,
+        remoteVideoUrl: `https://raw.githubusercontent.com/Kaklotar9985/KAILU-CREATION-V2/main/videos/Product_Videos/${baseSku}.mp4`,
         variants: uniqueVariants
       });
     });
@@ -191,7 +201,7 @@
     );
   }
 
-  function loadScript(src, timeoutMs = 12000) {
+  function loadScript(src, timeoutMs = CDN_TIMEOUT_MS) {
     return new Promise((resolve, reject) => {
       const script = document.createElement("script");
       let settled = false;
@@ -207,6 +217,8 @@
           reject(error);
         } else resolve();
       }
+      script.async = true;
+      script.crossOrigin = "anonymous";
       script.src = src;
       script.onload = () => finish();
       script.onerror = () => finish(new Error(`Could not load ${src}`));
@@ -218,10 +230,10 @@
     if (window.XLSX) return;
     const failures = [];
     for (const source of SHEETJS_URLS) {
-      const url = new URL(source);
-      url.searchParams.set("_catalog_reader", String(Date.now()));
       try {
-        await loadScript(url.href, 15000);
+        // Let the browser cache this large, versioned library; only the workbook
+        // itself is cache-busted because that is the data expected to change.
+        await loadScript(source, CDN_TIMEOUT_MS);
         if (window.XLSX) return;
         failures.push(`${source}: loaded without XLSX global`);
       } catch (error) {
@@ -261,9 +273,36 @@
     }
     await ensureExcelReader();
     const workbookUrl = workbookUrlForThisSite();
-    const response = await fetch(workbookUrl.href, { cache: "no-store", credentials: "same-origin", redirect: "follow" });
-    if (!response.ok) throw new Error(`Excel download failed (HTTP ${response.status}).`);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), WORKBOOK_TIMEOUT_MS);
+    let response;
+    try {
+      response = await fetch(workbookUrl.href, {
+        cache: "no-store",
+        credentials: "same-origin",
+        redirect: "follow",
+        signal: controller.signal
+      });
+    } catch (error) {
+      if (error && error.name === "AbortError") {
+        throw new Error(`Excel download timed out after ${WORKBOOK_TIMEOUT_MS / 1000} seconds. Check the hosted workbook URL and connection.`);
+      }
+      throw new Error(`Excel download request failed: ${error && error.message ? error.message : String(error)}`);
+    } finally {
+      clearTimeout(timeout);
+    }
+    if (!response.ok) throw new Error(`Excel download failed (HTTP ${response.status}) from ${workbookUrl.pathname}.`);
+    const contentType = (response.headers.get("content-type") || "").toLowerCase();
     const buffer = await response.arrayBuffer();
+    if (buffer.byteLength < 100) throw new Error(`Excel download was empty (${buffer.byteLength} bytes). Check that the workbook is published at ${workbookUrl.pathname}.`);
+    // GitHub Pages can return an HTML 404 page with status 200 for misconfigured
+    // routes. XLSX parsing below will reject it, but this message helps explain why.
+    if (contentType.includes("text/html") && buffer.byteLength < 200000) {
+      const preview = new TextDecoder().decode(buffer.slice(0, 300)).toLowerCase();
+      if (preview.includes("<!doctype html") || preview.includes("<html")) {
+        throw new Error("The workbook URL returned an HTML page instead of an Excel file. Upload the .xlsx beside index.html and commit it.");
+      }
+    }
     return parseWorkbookCatalogBuffer(buffer, workbookUrl.href);
   }
 
@@ -313,66 +352,87 @@
     });
   }
 
-  function chooseFallback(error) {
-    let cached = null;
+  function readCachedCatalog() {
     try {
       const saved = JSON.parse(localStorage.getItem(CACHE_KEY) || "null");
-      if (saved && validCatalog(saved.catalog)) cached = saved.catalog;
-    } catch (_) { /* localStorage may be disabled or unavailable. */ }
-    if (cached) {
-      window.KAILU_PRODUCT_CATALOG = cached;
-      window.KAILU_CATALOG_SYNC_STATUS = {
-        mode: "cache", ok: false, message: "Sync Failed — Showing Last Synced Data",
-        detail: error && error.message ? error.message : String(error || "Unknown sync error")
-      };
-      console.warn("[KAILU Catalog Sync] Excel sync failed; showing the last successfully synced catalog.", window.KAILU_CATALOG_SYNC_STATUS.detail);
-      return;
+      return saved && validCatalog(saved.catalog) ? saved : null;
+    } catch (_) {
+      return null;
     }
-    if (!validCatalog(window.KAILU_PRODUCT_CATALOG)) {
-      window.KAILU_PRODUCT_CATALOG = [];
+  }
+
+  function applyCatalog(catalog, status) {
+    if (typeof window.KAILU_APPLY_CATALOG === "function") {
+      window.KAILU_APPLY_CATALOG(catalog, status);
+    } else {
+      window.KAILU_PRODUCT_CATALOG = catalog;
+      window.KAILU_CATALOG_SYNC_STATUS = status;
     }
-    window.KAILU_CATALOG_SYNC_STATUS = {
-      mode: "snapshot", ok: false, message: "Sync Failed — Showing Backup Data",
-      detail: error && error.message ? error.message : String(error || "Unknown sync error")
-    };
-    console.warn("[KAILU Catalog Sync] Excel sync failed; showing bundled backup data.", window.KAILU_CATALOG_SYNC_STATUS.detail);
+  }
+
+  function updateStatus(status) {
+    if (typeof window.KAILU_UPDATE_CATALOG_STATUS === "function") {
+      window.KAILU_UPDATE_CATALOG_STATUS(status);
+    } else {
+      window.KAILU_CATALOG_SYNC_STATUS = status;
+    }
   }
 
   async function start() {
-    try {
-      let result;
-      if (window.location.protocol === "file:") {
-        result = await chooseLocalWorkbookFile();
-        if (!result) throw new Error("Local Excel workbook was not selected; using backup data for this test only.");
-      } else {
-        result = await loadWorkbookCatalog();
+    // Reuse last successful data immediately when available. The bundled backup
+    // has already rendered by the time this async loader runs.
+    const cached = readCachedCatalog();
+    if (cached) {
+      try {
+        applyCatalog(cached.catalog, {
+          mode: "loading",
+          ok: null,
+          message: "Loading latest catalog from Excel…",
+          cachedAt: cached.syncedAt || ""
+        });
+      } catch (error) {
+        console.warn("[KAILU Catalog Sync] Could not apply cached catalog; keeping bundled snapshot.", error);
       }
+    }
+
+    try {
+      const result = await loadWorkbookCatalog();
       const catalog = result.catalog;
-      // Only accept a fully validated, non-empty catalog. Failed/empty syncs do not
-      // overwrite the last-known-good browser cache.
+      // Only accept a fully validated, non-empty workbook. Failed/empty syncs do not
+      // overwrite the last-known-good cache and never empty the product grid.
       if (!validCatalog(catalog)) throw new Error("Excel validation did not produce a complete catalog.");
-      window.KAILU_PRODUCT_CATALOG = catalog;
       const syncedAt = new Date().toISOString();
-      window.KAILU_CATALOG_SYNC_STATUS = {
+      const status = {
         mode: "excel", ok: true, syncedAt, workbookUrl: result.workbookUrl,
         worksheet: result.worksheet, rows: result.rowCount, catalogs: catalog.length,
         message: "Synced from Excel"
       };
-      try { localStorage.setItem(CACHE_KEY, JSON.stringify({ catalog, syncedAt, workbookUrl: result.workbookUrl, worksheet: result.worksheet, rows: result.rowCount })); } catch (_) { /* Cache is optional. */ }
+      applyCatalog(catalog, status);
+      try {
+        localStorage.setItem(CACHE_KEY, JSON.stringify({
+          catalog, syncedAt, workbookUrl: result.workbookUrl,
+          worksheet: result.worksheet, rows: result.rowCount
+        }));
+      } catch (_) { /* Browser storage is optional. */ }
       console.info(`[KAILU Catalog Sync] Synced ${result.rowCount} Excel rows into ${catalog.length} catalogs from ${result.workbookUrl} (sheet: ${result.worksheet}).`);
     } catch (error) {
-      chooseFallback(error);
-    }
-    try {
-      const appUrl = new URL(APP_SCRIPT_NAME, new URL("./", window.location.href));
-      appUrl.searchParams.set("_app", String(Date.now()));
-      await loadScript(appUrl.href);
-    } catch (error) {
-      const status = window.KAILU_CATALOG_SYNC_STATUS || {};
-      status.appLoadError = error.message || String(error);
-      window.KAILU_CATALOG_SYNC_STATUS = status;
-      const summary = document.getElementById("productSummary");
-      if (summary) summary.textContent = "Unable to load the storefront scripts. Refresh the page or contact the site owner.";
+      const detail = error && error.message ? error.message : String(error || "Unknown sync error");
+      const lastGood = readCachedCatalog();
+      if (lastGood) {
+        const status = {
+          mode: "cache", ok: false, message: "Sync Failed — Showing Last Synced Data",
+          detail, syncedAt: lastGood.syncedAt || ""
+        };
+        try { applyCatalog(lastGood.catalog, status); }
+        catch (_) { updateStatus(status); }
+        console.warn("[KAILU Catalog Sync] Excel sync failed; showing last successfully synced catalog.", detail);
+      } else {
+        const status = {
+          mode: "snapshot", ok: false, message: "Sync Failed — Showing Backup Data", detail
+        };
+        updateStatus(status);
+        console.warn("[KAILU Catalog Sync] Excel sync failed; showing bundled backup data.", detail);
+      }
     }
   }
 

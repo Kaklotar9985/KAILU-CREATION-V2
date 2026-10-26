@@ -1,6 +1,7 @@
 /* KAILU CREATION storefront.
- * catalog-sync.js loads the deployed Excel workbook as the primary catalog source.
- * products-data.js is retained only as last-known-good fallback data.
+ * Render products-data.js immediately so the storefront is never blank while
+ * catalog-sync.js fetches the deployed Excel workbook in the background.
+ * The validated workbook replaces this snapshot without a page reload.
  * Keep the current Apps Script order contract and pincode data source intact.
  */
 const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzoDLyc2YwBgl_KnTio5LVKdZQ-GsLTvKQWMi1Uhg4zodfSt2sWtSn0a2SzO8RjCcbyHw/exec";
@@ -10,23 +11,44 @@ const SIZE_ORDER = ["S", "M", "L", "XL", "XXL", "3XL"];
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
 
-const products = (window.KAILU_PRODUCT_CATALOG || []).map(product => ({
-  ...product,
-  id: String(product.id),
-  groupCode: String(product.groupCode ?? ""),
-  variants: (product.variants || []).map(variant => ({
-    ...variant,
-    sku: String(variant.sku ?? ""),
-    size: String(variant.size ?? ""),
-    inventory: variant.inventory === null || variant.inventory === "" ? null : Number(variant.inventory),
-    mrp: variant.mrp === null || variant.mrp === "" ? null : Number(variant.mrp),
-    price: variant.price === null || variant.price === "" ? null : Number(variant.price),
-    rating: variant.rating === null || variant.rating === "" ? null : Number(variant.rating),
-    reviews: variant.reviews === null || variant.reviews === "" ? null : Number(variant.reviews)
-  }))
-}));
-const productById = new Map(products.map(product => [product.id, product]));
-const variantBySku = new Map(products.flatMap(product => product.variants.map(variant => [variant.sku, { product, variant }])));
+function normalizeCatalogProductList(input) {
+  if (!Array.isArray(input)) return [];
+  return input.map(product => ({
+    ...product,
+    id: String(product.id ?? ""),
+    groupCode: String(product.groupCode ?? ""),
+    variants: (product.variants || []).map(variant => ({
+      ...variant,
+      sku: String(variant.sku ?? ""),
+      size: String(variant.size ?? ""),
+      inventory: variant.inventory === null || variant.inventory === "" ? null : Number(variant.inventory),
+      mrp: variant.mrp === null || variant.mrp === "" ? null : Number(variant.mrp),
+      price: variant.price === null || variant.price === "" ? null : Number(variant.price),
+      rating: variant.rating === null || variant.rating === "" ? null : Number(variant.rating),
+      reviews: variant.reviews === null || variant.reviews === "" ? null : Number(variant.reviews)
+    }))
+  })).filter(product => product.id && product.variants.length > 0);
+}
+
+// Start with bundled last-known-good data immediately. Excel sync updates these
+// indexes later; this avoids a blank page while a CDN or workbook request is slow.
+let products = normalizeCatalogProductList(window.KAILU_PRODUCT_CATALOG || []);
+let productById = new Map();
+let variantBySku = new Map();
+function rebuildProductIndexes() {
+  productById = new Map(products.map(product => [product.id, product]));
+  variantBySku = new Map(products.flatMap(product =>
+    product.variants.map(variant => [variant.sku, { product, variant }])
+  ));
+}
+rebuildProductIndexes();
+if (!window.KAILU_CATALOG_SYNC_STATUS) {
+  window.KAILU_CATALOG_SYNC_STATUS = {
+    mode: "loading",
+    ok: null,
+    message: "Loading latest catalog from Excel…"
+  };
+}
 
 const productGrid = $("#productGrid");
 const searchInput = $("#searchInput");
@@ -75,6 +97,33 @@ const getVariant = (product, sku) => product?.variants.find(variant => variant.s
 const getProductImage = product => (product?.images || []).find(image => image?.url || image?.fallback) || null;
 const localImageUrl = path => path ? new URL(path, document.baseURI).href : "";
 
+// Product grid/detail thumbnails use lightweight derivatives when the Excel
+// link points to the matching local Product_Photos asset. Main images continue
+// to use the original Excel URL and full-resolution fallback.
+function thumbnailSources(media) {
+  const url = String(media?.url || "").trim();
+  const fallback = String(media?.fallback || "").trim();
+  const thumbnailFallback = String(media?.thumbnailFallback || "").trim() ||
+    fallback.replace("images/Product_Photos/", "images/Product_Thumbnails/")
+      .replace(/\.(webp|png|jpe?g)(\?.*)?$/i, "-thumb.webp");
+  const remoteFallback = String(media?.remoteFallback || "").trim();
+  const remoteThumbnailFallback = String(media?.remoteThumbnailFallback || "").trim() || remoteFallback;
+  const cleanPath = value => String(value || "").replace(/^\.\//, "").replace(/^\//, "");
+  if (!url) return { primary: thumbnailFallback || fallback, fallback, remoteFallback: remoteThumbnailFallback };
+  if (fallback && cleanPath(url) === cleanPath(fallback)) {
+    return { primary: thumbnailFallback || url, fallback, remoteFallback: remoteThumbnailFallback };
+  }
+  // Treat a raw GitHub URL as the same asset when its path matches our SKU map.
+  try {
+    const parsed = new URL(url, document.baseURI);
+    const rawPath = decodeURIComponent(parsed.pathname).replace(/^.*?\/(images\/Product_Photos\/)/, "$1");
+    if (fallback && cleanPath(rawPath) === cleanPath(fallback)) {
+      return { primary: thumbnailFallback || fallback, fallback, remoteFallback: remoteThumbnailFallback };
+    }
+  } catch (_) {}
+  return { primary: url, fallback: thumbnailFallback || fallback, remoteFallback: remoteThumbnailFallback };
+}
+
 function showToast(message) {
   if (!toast) return;
   toast.textContent = message;
@@ -83,36 +132,42 @@ function showToast(message) {
   toastTimer = setTimeout(() => toast.classList.remove("show"), 2600);
 }
 
-function configureImage(image, primaryUrl, fallbackUrl, onMissing) {
+function configureImage(image, primaryUrl, fallbackUrl, onMissing, secondaryFallbackUrl = "") {
   if (!image) return;
-  const primary = String(primaryUrl || "").trim();
-  const fallback = String(fallbackUrl || "").trim();
-  image.dataset.primary = primary;
-  image.dataset.fallback = fallback;
+  const rawCandidates = [primaryUrl, fallbackUrl, secondaryFallbackUrl]
+    .map(value => String(value || "").trim())
+    .filter(Boolean);
+  const candidates = [];
+  const seen = new Set();
+  rawCandidates.forEach(source => {
+    try {
+      const absolute = new URL(source, document.baseURI).href;
+      if (!seen.has(absolute)) {
+        seen.add(absolute);
+        candidates.push(absolute);
+      }
+    } catch (_) { /* Ignore malformed media URLs and continue with the next fallback. */ }
+  });
+
+  image.dataset.primary = String(primaryUrl || "");
+  image.dataset.fallback = String(fallbackUrl || "");
+  image.dataset.secondaryFallback = String(secondaryFallbackUrl || "");
   image.dataset.fallbackTried = "false";
-  image.hidden = false;
+  let attempt = 0;
+  image.hidden = candidates.length === 0;
   image.onerror = () => {
-    const current = image.getAttribute("src") || "";
-    const fallbackAbs = fallback ? localImageUrl(fallback) : "";
-    if (fallbackAbs && image.dataset.fallbackTried !== "true" && current !== fallback && current !== fallbackAbs) {
-      image.dataset.fallbackTried = "true";
-      image.src = fallback;
-      return;
-    }
-    if (fallbackAbs && image.dataset.fallbackTried !== "true" && (current === fallback || current === fallbackAbs) && primary && current !== primary) {
-      image.dataset.fallbackTried = "true";
-      image.src = primary;
+    attempt += 1;
+    image.dataset.fallbackTried = attempt > 0 ? "true" : "false";
+    if (attempt < candidates.length) {
+      image.src = candidates[attempt];
       return;
     }
     image.hidden = true;
     if (typeof onMissing === "function") onMissing(image);
   };
   image.onload = () => { image.hidden = false; };
-  image.src = primary || fallback || "";
-  if (!primary && !fallback) {
-    image.hidden = true;
-    if (typeof onMissing === "function") onMissing(image);
-  }
+  if (candidates.length) image.src = candidates[0];
+  else if (typeof onMissing === "function") onMissing(image);
 }
 
 function renderCategories() {
@@ -165,6 +220,10 @@ function renderProducts() {
       summary.textContent = `${countText} · ${fallbackLabel}`;
       summary.dataset.syncState = "warning";
       summary.title = `${syncStatus.message || fallbackLabel}. Cause: ${syncStatus.detail || "Excel catalog could not be refreshed."}`;
+    } else if (syncStatus && syncStatus.mode === "loading") {
+      summary.textContent = `${countText} · Loading latest catalog from Excel…`;
+      summary.dataset.syncState = "loading";
+      summary.title = "Showing the available catalog while the latest Excel workbook is checked.";
     } else {
       summary.textContent = countText;
       summary.removeAttribute("data-sync-state");
@@ -172,7 +231,7 @@ function renderProducts() {
     }
   }
 
-  visible.forEach(product => {
+  visible.forEach((product, productIndex) => {
     const variant = firstAvailableVariant(product);
     const sourceImages = (product.images || []).map((image, sourceIndex) => ({ ...image, sourceIndex })).filter(image => image && (image.url || image.fallback));
     const displayThumbs = sourceImages.slice(0, 4);
@@ -186,13 +245,13 @@ function renderProducts() {
       <div class="catalog-card-media">
         <button class="catalog-main-trigger" type="button" data-open-product="${escapeHtml(product.id)}" aria-label="Open catalog ${escapeHtml(product.name)}">
           <span class="product-tag">${discount !== null && discount > 0 ? "SALE" : escapeHtml(product.tag || "CATALOG")}</span>
-          <span class="catalog-image-wrap"><img class="catalog-photo" alt="${escapeHtml(product.name)}" loading="lazy"></span>
+          <span class="catalog-image-wrap"><img class="catalog-photo" alt="${escapeHtml(product.name)}" loading="${productIndex < 3 ? "eager" : "lazy"}" decoding="async" fetchpriority="${productIndex === 0 ? "high" : productIndex < 3 ? "auto" : "low"}" width="900" height="1400"></span>
           <span class="catalog-photo-unavailable" hidden>Photo unavailable</span>
         </button>
         <div class="catalog-thumb-rail" aria-label="${escapeHtml(product.name)} photos">
           ${displayThumbs.map((image, index) => `
             <button type="button" class="catalog-rail-thumb ${index === 0 ? "active" : ""}" data-card-photo="${index}" data-source-index="${image.sourceIndex}" aria-label="Show product photo ${index + 1}" ${index === 0 ? 'aria-pressed="true"' : 'aria-pressed="false"'}>
-              <img alt="" loading="lazy">
+              <img alt="" loading="lazy" decoding="async" fetchpriority="low" width="180" height="240">
             </button>`).join("")}
         </div>
       </div>
@@ -219,7 +278,7 @@ function renderProducts() {
       if (wrap) wrap.hidden = true;
       const placeholder = $(".catalog-photo-unavailable", card);
       if (placeholder) placeholder.hidden = false;
-    });
+    }, image1.remoteFallback);
     $$(".catalog-rail-thumb", card).forEach((button, index) => {
       const media = displayThumbs[index];
       const img = $("img", button);
@@ -228,9 +287,14 @@ function renderProducts() {
       // hidden forever. Keep the grid slot reserved but visually hidden until load.
       button.hidden = false;
       button.style.visibility = "hidden";
-      img.loading = "eager";
+      // Avoid eagerly downloading every thumbnail in every off-screen card.
+      // First thumbnail of the first row is eager; other thumbnails use native lazy loading.
+      img.loading = productIndex < 3 && index === 0 ? "eager" : "lazy";
+      img.decoding = "async";
+      img.fetchPriority = "low";
       img.addEventListener("load", () => { button.style.visibility = "visible"; });
-      configureImage(img, media.url, media.fallback, () => {
+      const thumbSource = thumbnailSources(media);
+      configureImage(img, thumbSource.primary, thumbSource.fallback, () => {
         button.hidden = true;
         const remaining = $$(".catalog-rail-thumb", card).filter(thumb => !thumb.hidden);
         if (!remaining.some(thumb => thumb.classList.contains("active")) && remaining.length) {
@@ -238,7 +302,7 @@ function renderProducts() {
           remaining[0].setAttribute("aria-pressed", "true");
           setCardMainImage(card, displayThumbs[Number(remaining[0].dataset.cardPhoto)]);
         }
-      });
+      }, thumbSource.remoteFallback);
       button.dataset.cardPhoto = String(index);
       button.dataset.primary = media.url || "";
       button.dataset.fallback = media.fallback || "";
@@ -262,7 +326,7 @@ function setCardMainImage(card, media) {
   configureImage(image, media.url, media.fallback, () => {
     if (wrap) wrap.hidden = true;
     if (placeholder) placeholder.hidden = false;
-  });
+  }, media.remoteFallback);
 }
 
 function ensureDetailModal() {
@@ -315,7 +379,11 @@ function mediaKey(product, index) { return `${product.id}:image:${index}`; }
 function makeDetailImageMedia(product) {
   return (product.images || []).map((image, index) => ({
     type: "image", key: mediaKey(product, index), label: `Image ${index + 1}`,
-    url: image?.url || "", fallback: image?.fallback || "", alt: `${product.name} — Image ${index + 1}`
+    url: image?.url || "", fallback: image?.fallback || "",
+    thumbnailFallback: image?.thumbnailFallback || "",
+    remoteFallback: image?.remoteFallback || "",
+    remoteThumbnailFallback: image?.remoteThumbnailFallback || "",
+    alt: `${product.name} — Image ${index + 1}`
   })).filter(media => media.url || media.fallback);
 }
 
@@ -325,6 +393,7 @@ function checkVideoAvailability(product) {
     const candidates = [];
     if (product.videoUrl) candidates.push(product.videoUrl);
     if (product.localVideo && !candidates.includes(product.localVideo)) candidates.push(product.localVideo);
+    if (product.remoteVideoUrl && !candidates.includes(product.remoteVideoUrl)) candidates.push(product.remoteVideoUrl);
     if (!candidates.length) { resolve(null); return; }
     const probe = document.createElement("video");
     probe.preload = "metadata";
@@ -400,10 +469,11 @@ function renderDetailThumbnails() {
     // Attach the thumbnail to the document before setting src, so cached images
     // cannot finish loading before their load listener/visibility state is ready.
     if (imageToConfigure) {
-      configureImage(imageToConfigure, media.url, media.fallback, () => {
+      const thumbSource = thumbnailSources(media);
+      configureImage(imageToConfigure, thumbSource.primary, thumbSource.fallback, () => {
         button.hidden = true;
         removeFailedDetailMedia(media.key);
-      });
+      }, thumbSource.remoteFallback);
     }
   });
   const navHidden = detailMedia.length <= 1;
@@ -454,7 +524,7 @@ function showDetailMedia(index, options = {}) {
     configureImage(image, media.url, media.fallback, () => {
       if (placeholder) placeholder.hidden = false;
       removeFailedDetailMedia(media.key);
-    });
+    }, media.remoteFallback);
   } else if (video) {
     if (image) image.hidden = true;
     video.muted = true;
@@ -695,7 +765,11 @@ function renderCart() {
       <div class="line-price">${money(lineTotal)}</div>`;
     cartItems.appendChild(row);
     const media = getProductImage(product);
-    configureImage($("img", row), media?.url || "", media?.fallback || "", image => { image.hidden = true; });
+    const thumbSource = thumbnailSources(media);
+    const cartImage = $("img", row);
+    cartImage.loading = "lazy";
+    cartImage.decoding = "async";
+    configureImage(cartImage, thumbSource.primary, thumbSource.fallback, image => { image.hidden = true; }, thumbSource.remoteFallback);
   });
   const proceed = $("#proceedCheckout");
   if (proceed) proceed.hidden = entries.length === 0 || checkoutStarted;
@@ -1019,7 +1093,7 @@ function showLightboxItem(index) {
   } else {
     video.pause(); video.removeAttribute("src"); video.load(); video.hidden = true;
     image.hidden = false;
-    configureImage(image, item.url, item.fallback, () => { image.hidden = true; showToast("This image is no longer available."); });
+    configureImage(image, item.url, item.fallback, () => { image.hidden = true; showToast("This image is no longer available."); }, item.remoteFallback);
     image.alt = item.alt || "Catalog full-screen photo";
   }
 }
@@ -1227,7 +1301,49 @@ window.addEventListener("popstate", () => {
   if (successModal && !successModal.hidden) { successModal.hidden = true; document.body.classList.remove("success-modal-open"); }
 });
 
-// Initialize once all data scripts are loaded.
+// The storefront renders immediately from the bundled snapshot, then the sync
+// module calls this function when a fresh workbook has been validated.
+window.KAILU_APPLY_CATALOG = function applyCatalog(rawCatalog, syncStatus) {
+  const nextProducts = normalizeCatalogProductList(rawCatalog);
+  if (!nextProducts.length) throw new Error("Refusing to apply an empty or invalid catalog.");
+  const openDetailId = currentDetailProduct?.id || "";
+  const selectedSku = currentDetailVariant?.sku || "";
+  products = nextProducts;
+  window.KAILU_PRODUCT_CATALOG = rawCatalog;
+  if (syncStatus) window.KAILU_CATALOG_SYNC_STATUS = syncStatus;
+  rebuildProductIndexes();
+  // Workbook URLs may have changed for a product; do not reuse old video probes.
+  videoAvailability = new Map();
+
+  // Keep cart rows whose SKUs still exist. Removed variants cannot accidentally
+  // point to another product after a workbook update.
+  cartState = cartState.filter(item => variantBySku.has(item.sku));
+  renderCategories();
+  renderProducts();
+  renderCart();
+
+  const modal = $("#productDetailModal");
+  if (openDetailId && modal && !modal.hidden) {
+    const updatedProduct = productById.get(openDetailId);
+    if (updatedProduct) {
+      currentDetailProduct = updatedProduct;
+      currentDetailVariant = getVariant(updatedProduct, selectedSku) || firstAvailableVariant(updatedProduct);
+      renderDetailInfo();
+      updateDetailMediaForProduct(updatedProduct);
+    } else {
+      closeProductDetail({ replaceUrl: true });
+    }
+  }
+  return true;
+};
+
+window.KAILU_UPDATE_CATALOG_STATUS = function updateCatalogStatus(status) {
+  window.KAILU_CATALOG_SYNC_STATUS = status || {};
+  renderProducts();
+};
+
+// Initialize immediately from the bundled last-known-good catalog. Excel is fetched
+// in the background by catalog-sync.js, so the page never waits for a CDN to paint.
 ensureDetailModal();
 renderCategories();
 renderProducts();

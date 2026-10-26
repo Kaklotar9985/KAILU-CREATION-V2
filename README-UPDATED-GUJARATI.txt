@@ -88,3 +88,34 @@ LOCAL PC TEST — READ THIS FIRST (FIXED)
 વૈકલ્પિક રીતે `START-LOCAL-TEST.bat` પર double-click કરો. તે Python HTTP server શરૂ કરી `http://127.0.0.1:8765/` ખોલે છે. આ server modeમાં Excel આ જ folderમાં હોવી જોઈએ અને Save પછી માત્ર `Ctrl + F5` કરવું પૂરતું છે. Browser address `file://` ન હોવું જોઈએ.
 
 **તમારી screenshotની diagnosis:** Excelમાં Inventory 1 દેખાય છે, જ્યારે Website 99 બતાવે છે. Website Excel parse કરી રહી નથી અને Backup Data બતાવી રહી છે. Excel file save કરવું એકલું પૂરતું નથી; pageએ Excel file fetch/read કરવી પણ જરૂરી છે.
+
+
+============================================================
+PERFORMANCE OPTIMIZATION UPDATE (2026-10-26)
+============================================================
+મુખ્ય ફેરફારો:
+1. `script.js` હવે Excel/CDN responseની રાહ જોયા વિના `products-data.js`ની last-known-good catalog તરત render કરે છે. `catalog-sync.js` Excel સફળતાપૂર્વક validate થયા પછી `KAILU_APPLY_CATALOG()` દ્વારા catalog, category list, detail view અને cart indexes update કરે છે.
+2. Excel/SheetJS request હવે timeout સાથે છે. CDN લોડ ન થાય, workbook 404/HTML આપે, request timeout થાય અથવા workbook invalid હોય તો grid ખાલી રાખવાને બદલે Backup/Last Synced Data તથા સ્પષ્ટ Sync Warning રહે છે.
+3. SheetJS CDN માટે browser cacheનો ઉપયોગ રહે તે માટે દરેક page load પર versioned library URLમાં અકારણ timestamp ઉમેરાતો નથી. Excel workbook જ cache-busting/no-storeથી fetch થાય છે.
+4. Gridની પહેલી ત્રણ Main Images eager load થાય છે; ફક્ત પહેલી card imageને high fetch priority મળે છે. નીચેનાં cardsની Main Images અને off-screen thumbnails lazy load થાય છે.
+5. `images/Product_Thumbnails/`માં 26 lightweight WebP thumbnails ઉમેર્યાં. Full-resolution original Product Photos બદલ્યાં નથી. Thumbnail derivative set 4,139,794 bytesથી 580,760 bytes થયું (લગભગ 86% ઓછું).
+6. Hero image JPGના બદલે high-quality WebP variants વપરાય છે; 3 hero images માટેનું aggregate file size લગભગ 998 KBથી 565 KB થયું. Original JPG files packageમાં જાળવેલી છે.
+7. Brand mark, footer logo, shopping bag અને clothing-tag art માટે નાના WebP display variants ઉમેર્યાં. Original assets packageમાં જાળવ્યાં છે.
+8. Local image URL fail થાય તો matching SKU photo માટે raw-GitHub fallback પણ અજમાય છે; ખોટો product fallback વપરાતો નથી.
+9. Google Fonts માટે preconnect અને non-blocking stylesheet pattern ઉમેરાયો; CSSમાંથી waterfall-રૂપ `@import` દૂર કર્યો.
+10. Product detail video element `preload="none"` વાપરે છે. Video metadata probe ફક્ત product detail ખોલ્યા પછી થાય છે; initial catalog page video download કરતું નથી.
+
+Test સ્થિતિ:
+- `node --check` દ્વારા `script.js`, `catalog-sync.js`, `products-data.js`, અને `pincode-serviceability.js` syntax — PASS.
+- HTML script order: backup snapshot → storefront app → background Excel sync — static check PASS.
+- Workbookમાં 34 SKU rows/6 catalog groupsનું mapping static રીતે verify કર્યું.
+- 26 source product photos માટે thumbnail derivatives બનાવ્યા; દરેક generated derivative file હાજર છે.
+- Asset file-size checks વડે thumbnail setમાં લગભગ 86% અને 3 hero imagesમાં લગભગ 43% કુલ size ઘટાડો ચકાસ્યો.
+- Chromium browser navigation `ERR_BLOCKED_BY_ADMINISTRATOR`થી રોકાયું; તેથી real browser LCP, time-to-first-catalog, image-network waterfall, mobile/desktop rendering અને live Cart/Order end-to-end performance measurement નથી થઈ શક્યાં. ZIPમાં કોઈ measured live page-load timeનો દાવો નથી.
+
+Deployment નોંધ:
+આ ફેરફારો live website પર લાગુ કરવા ZIPની files યોગ્ય GitHub Pages repositoryના rootમાં publish કરવી જરૂરી છે. ZIPમાં જૂના JPG/logo assetsને delete કર્યા નથી; page માત્ર નવા optimized variants reference કરે છે.
+
+Additional local static-server checks (2026-10-26):
+- Local HTTP server returned 200 for `/`, `style.css`, `script.js`, `catalog-sync.js`, `products-data.js`, the Excel workbook, one original product photo, its optimized thumbnail, the optimized hero image and the optimized logo.
+- These are local static-file request results (roughly 1–4 ms per request in this test environment); they are not a measure of public GitHub Pages load time or user-network performance.

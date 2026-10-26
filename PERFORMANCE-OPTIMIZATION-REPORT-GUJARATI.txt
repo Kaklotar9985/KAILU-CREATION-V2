@@ -1,0 +1,54 @@
+KAILU CREATION — PERFORMANCE OPTIMIZATION REPORT
+================================================
+Date: 26 October 2026
+Package: KAILU-CREATION-PERFORMANCE-FIX.zip
+
+ROOT CAUSE FOUND
+----------------
+1. In the supplied package, catalog-sync.js waited for SheetJS/CDN and the Excel download before dynamically loading script.js. When the CDN/workbook was slow or pending, the storefront was not initialized, leaving the user with “Loading latest catalog from Excel…” and an empty product grid.
+2. Every card thumbnail was forced to eager loading. This caused many full-resolution images to start downloading immediately, including images in cards far below the fold.
+3. The bundled backup snapshot pointed at raw-GitHub URLs first, creating cross-origin requests even when matching local Product_Photos existed.
+4. The three hero images, logo mark, footer logo and hero-art images were larger than their rendered size required; the CSS font import added an extra request waterfall.
+
+CHANGES MADE
+------------
+- index.html: script.js now loads before catalog-sync.js; the snapshot catalog renders immediately and Excel refresh happens in the background. Added cache-busting versions for style.css, products-data.js and script.js. Added font preconnect + non-blocking font stylesheet. Hero/logo images use optimized WebP variants with width/height metadata. Detail video uses preload="none".
+- script.js: products and SKU indexes can be safely replaced after Excel validation using window.KAILU_APPLY_CATALOG(). Product grid, categories, detail view, cart SKU references and sync status update together. First three visible main catalog photos load eagerly; off-screen main images and thumbnails use lazy loading and async decoding. Thumbnails use optimized derivatives and exact-SKU fallbacks.
+- catalog-sync.js: timeouts for CDN and Excel fetch; cached SheetJS library URLs; status shows loading while existing catalog stays visible; validated Excel data replaces the snapshot in the background; failures show a warning and preserve the last good catalog. Relative local assets also get matching raw-GitHub fallback.
+- products-data.js: bundled backup uses same-origin local asset URLs first and keeps raw-GitHub fallback links.
+- style.css: removed the @import font waterfall; existing product layout/design CSS otherwise retained.
+- Added 26 optimized Product_Thumbnails WebP files and optimized WebP display variants for hero and brand assets. Original product photos, JPGs, PNGs and original logo/tag assets remain in the package.
+
+MEASURED FILE-SIZE DIFFERENCES
+------------------------------
+- 26 source Product_Photos: 4,139,794 bytes in total.
+- 26 generated thumbnail derivatives: 580,760 bytes in total.
+- Thumbnail set reduction: approximately 86.0%.
+- Three hero JPGs: 998,206 bytes.
+- Three hero WebPs: 565,376 bytes.
+- Hero image reduction: approximately 43.4%.
+- Eight in-page hero/brand assets before: 1,850,393 bytes.
+- Eight corresponding optimized WebP display assets: 646,044 bytes.
+- Combined asset reduction for those eight representations: approximately 65.1%.
+These values compare the source asset sets with their derived alternatives; lazy loading means the browser need not download all images on first view.
+
+TESTS ACTUALLY RUN
+------------------
+PASS: node --check for script.js, catalog-sync.js, products-data.js and pincode-serviceability.js.
+PASS: CSS parser found zero stylesheet parse errors.
+PASS: Actual bundled Excel workbook has the 20 expected headers, 34 unique SKU rows and maps to 6 catalog groups.
+PASS: HTML references local assets that exist in the package (14 local HTML/script/style references checked).
+PASS: all 26 source product photos have a corresponding generated thumbnail derivative.
+PASS: local static server returned HTTP 200 for index.html, CSS, all main JS files, the Excel workbook, a sample product photo, its thumbnail, optimized hero images and logo. In this local test, individual requests returned in about 1–4 ms; this is not public-site performance measurement.
+
+NOT TESTED / LIMITATION
+-----------------------
+A real Chromium navigation attempt was blocked by the environment with ERR_BLOCKED_BY_ADMINISTRATOR. Therefore, no genuine browser First Contentful Paint/LCP measurement, network waterfall, Android/mobile visual test, or live Google Sheets/cart/order end-to-end test is claimed. The code is structured so the bundled catalog should render before Excel sync, but the live browser behavior must still be confirmed after publishing this ZIP.
+
+DEPLOYMENT
+----------
+Publish the contents of this ZIP to the root of the GitHub Pages repository that actually serves the site. Keep the CNAME file unchanged. Then hard-refresh the live site and confirm:
+- the product grid appears while the summary says it is loading Excel;
+- the summary changes to “Synced from Excel” when the workbook fetch/parse succeeds;
+- a deliberately unavailable workbook results in a visible Sync Failed warning while backup products remain on screen.
+The local Excel file on a PC does not automatically update GitHub Pages; the updated workbook must still be uploaded/committed to the hosted repository for the live site to sync it.
