@@ -2435,3 +2435,86 @@ body { background:#fff; color:var(--ink); }
   .product-detail-modal { padding: 3px; }
   .product-detail-panel { max-height: calc(100dvh - 6px); }
 }
+
+/* Gallery layout correction (2026-10-26): large complete main photo with four full thumbnails below. */
+.catalog-card-media {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: stretch;
+  gap: 8px;
+  width: 100%;
+  height: auto !important;
+  min-height: 0 !important;
+  grid-template-columns: minmax(0, 1fr) !important;
+  grid-template-rows: auto auto;
+  overflow: visible;
+}
+.catalog-main-trigger {
+  position: relative;
+  display: block;
+  flex: 0 0 auto;
+  width: 100%;
+  height: auto !important;
+  max-height: 440px;
+  aspect-ratio: 3 / 4;
+  overflow: hidden;
+  border-radius: 5px;
+}
+.catalog-main-trigger .catalog-image-wrap {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.catalog-main-trigger .catalog-photo {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain !important;
+  object-position: center center !important;
+  background: #f6f1e8;
+  transform: none !important;
+}
+.catalog-card:hover .catalog-main-trigger .catalog-photo {
+  transform: none !important;
+}
+.catalog-thumb-rail {
+  display: grid !important;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  align-items: start;
+  gap: 6px;
+  flex: 0 0 auto;
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  overflow: visible;
+}
+.catalog-rail-thumb {
+  display: block;
+  min-width: 0;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 3 / 4;
+  padding: 2px;
+  border: 1px solid #e8c98d;
+  border-radius: 4px;
+  overflow: hidden;
+  background: #fff;
+}
+.catalog-rail-thumb img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: center center;
+  background: #f6f1e8;
+}
+.catalog-rail-thumb[hidden] { display: none !important; }
+@media (max-width: 620px) {
+  .catalog-card-media { gap: 6px; }
+  .catalog-main-trigger { max-height: 400px; }
+  .catalog-thumb-rail { gap: 4px; }
+  .catalog-rail-thumb { padding: 1px; }
+}
+
