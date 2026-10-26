@@ -159,9 +159,12 @@ function renderProducts() {
       summary.dataset.syncState = "success";
       summary.title = syncStatus.syncedAt ? `Excel synced at ${new Date(syncStatus.syncedAt).toLocaleString()}` : "Catalog data loaded from Excel";
     } else if (syncStatus && syncStatus.ok === false) {
-      summary.textContent = `${countText} · Excel sync unavailable; showing saved data`;
+      const fallbackLabel = syncStatus.mode === "cache"
+        ? "Sync Failed — Showing Last Synced Data"
+        : "Sync Failed — Showing Backup Data";
+      summary.textContent = `${countText} · ${fallbackLabel}`;
       summary.dataset.syncState = "warning";
-      summary.title = syncStatus.detail || syncStatus.message || "Excel catalog could not be refreshed.";
+      summary.title = `${syncStatus.message || fallbackLabel}. Cause: ${syncStatus.detail || "Excel catalog could not be refreshed."}`;
     } else {
       summary.textContent = countText;
       summary.removeAttribute("data-sync-state");

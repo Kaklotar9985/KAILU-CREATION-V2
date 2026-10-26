@@ -1,0 +1,22 @@
+KAILU CREATION — PC PAR EXCEL SYNC TEST
+======================================
+
+તમારા screenshotમાં Browser `C:/.../index.html` પરથી ખૂલ્યું હતું. આ file:// mode છે. એ modeમાં Chrome Excel ફાઇલને આપમેળે fetch કરી શકતું નથી; તેથી Website Backup values (જેમ કે Inventory 99) બતાવતી હતી, ભલે Excelમાં Inventory 1 હોય.
+
+પદ્ધતિ A — Direct index.html (હવે Excel Picker આવશે)
+1. Excelમાં ફેરફાર Save કરો.
+2. index.html ખૂલેલી tabમાં Ctrl+F5 દબાવો.
+3. ઉપર દેખાતા Local PC Excel Test panelમાં `Kailu Creation Catalog List.xlsx` પસંદ કરો — updated Excel પસંદ કરવી.
+4. Product Summaryમાં `Synced from Excel` આવવું જોઈએ. `Sync Failed — Showing Backup Data` હોય તો નવી Excel load થઈ નથી.
+5. Excel ફરીથી બદલો અને Save કરો તો ફરી Ctrl+F5 કરીને updated Excel પસંદ કરો.
+
+પદ્ધતિ B — Local HTTP server (સુવિધાજનક)
+1. Excel ફાઇલને આ ZIP extract કરેલા folderના rootમાં જ રાખો.
+2. START-LOCAL-TEST.bat પર double-click કરો.
+3. Browser address `http://127.0.0.1:8765/` હોવો જોઈએ; `C:/.../index.html` નહીં.
+4. Excelમાં ફેરફાર Save કરો, પછી Browserમાં Ctrl+F5 કરો.
+5. Product Summaryમાં `Synced from Excel` હોવું જોઈએ.
+
+જો Sync Failed આવે તો Product Summary પર hover કરો અથવા developer consoleના `[KAILU Catalog Sync]` error જુઓ. Backup dataને નવી Excel તરીકે ન માનશો.
+
+નોંધ: Local PC પર Excel Save કરવાથી live kailucreation.in આપમેળે બદલાતી નથી. Live Site માટે updated workbookને GitHub/hostingમાં upload અને publish કરવી પડે છે.

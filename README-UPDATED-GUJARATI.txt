@@ -65,3 +65,26 @@ Excel Data Rules:
 - Product-level name/category/color/tag/fabric/description દરેક size rowમાં એકસરખાં રાખો. Image/Video links બદલતા હોય તો તે groupની rowsમાં consistent રાખો.
 - Excelની image/video link પહેલા વપરાય છે; ખાલી link હોય તો images/Product_Photos/<base-SKU>-N.webp અને videos/Product_Videos/<base-SKU>.mp4 fallback શોધાય છે. Missing media UIમાંથી hide થાય છે.
 - products-data.js હવે live source નથી; તે માત્ર first-load/sync-failure backup snapshot તરીકે રહે છે.
+
+============================================================
+IMPORTANT DEPLOYMENT FIX (2026-10-26)
+============================================================
+આ ZIPમાં `CNAME` અને `.nojekyll` ઉમેર્યાં છે. Public GitHub repository તપાસમાં kailucreation.inનું CNAME `KAILU-CREATION` repositoryમાં છે; ત્યાંની file listingમાં પહેલાં `catalog-sync.js` અને Excel workbook નહોતાં. તેથી sync code વાળી ZIP ફક્ત local extract કરવાથી અથવા `KAILU-CREATION-V2`માં જ મૂકવાથી kailucreation.inની current deployment બદલાતી ન હતી.
+
+સંપૂર્ણ deployment checklist માટે `EXCEL-SYNC-DEPLOYMENT-GUJARATI.txt` વાંચો. ZIPની અંદરની website filesને domain-owning `KAILU-CREATION` repositoryના rootમાં publish કરો અને CNAME `kailucreation.in` જાળવો.
+
+
+LOCAL PC TEST — READ THIS FIRST (FIXED)
+======================================
+તમારા screenshotમાં Browser address `C:/.../index.html?...`થી શરૂ થાય છે. તેનો અર્થ Website `file://` modeમાં ખુલી છે. Chrome આ modeમાં `fetch()` વડે Excel ફાઇલ વાંચવા દેતું નથી; તેથી `catalog-sync.js` sync નિષ્ફળ થઈ `products-data.js`ના જૂના Backup values (જેમ કે Inventory 99) બતાવતો હતો.
+
+આ packageમાં Excel Workbook પણ સામેલ છે અને direct `index.html` ખોલો ત્યારે હવે Local Excel Picker દેખાશે.
+1. Excelમાં ફેરફાર કરો અને Save કરો.
+2. Browserમાં `Ctrl + F5` દબાવો.
+3. `Kailu Creation Catalog List.xlsx` પસંદ કરો — તમારા તાજેતરમાં Save કરેલા workbookને પસંદ કરો.
+4. Product Summaryમાં `Synced from Excel` આવ્યા પછી જ નવી values લાગુ પડી હોવાનું માનવું. જો `Sync Failed` દેખાય, તો backup data છે; તે સફળ sync નથી.
+5. Excelમાં ફરી ફેરફાર કરો તો Save → `Ctrl + F5` → એ જ updated workbook ફરી પસંદ કરો. Browserની સુરક્ષા કારણે `file://` page નવી local file શાંતિથી વાંચી શકતું નથી.
+
+વૈકલ્પિક રીતે `START-LOCAL-TEST.bat` પર double-click કરો. તે Python HTTP server શરૂ કરી `http://127.0.0.1:8765/` ખોલે છે. આ server modeમાં Excel આ જ folderમાં હોવી જોઈએ અને Save પછી માત્ર `Ctrl + F5` કરવું પૂરતું છે. Browser address `file://` ન હોવું જોઈએ.
+
+**તમારી screenshotની diagnosis:** Excelમાં Inventory 1 દેખાય છે, જ્યારે Website 99 બતાવે છે. Website Excel parse કરી રહી નથી અને Backup Data બતાવી રહી છે. Excel file save કરવું એકલું પૂરતું નથી; pageએ Excel file fetch/read કરવી પણ જરૂરી છે.
