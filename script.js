@@ -524,7 +524,11 @@ function updateCatalogUrl(productId, { replace = false, fromUrl = false } = {}) 
     const url = new URL(window.location.href);
     url.searchParams.set("catalog", productId);
     url.hash = "products";
-    const state = { ...(history.state && typeof history.state === "object" ? history.state : {}), kailuUI: "detail" };
+    const state = {
+      ...(history.state && typeof history.state === "object" ? history.state : {}),
+      kailuUI: "detail",
+      catalogId: String(productId)
+    };
     history[replace ? "replaceState" : "pushState"](state, "", url.toString());
   } catch (_) { /* URL history is progressive enhancement; catalog still works without it. */ }
 }
@@ -549,6 +553,18 @@ function openProductDetail(productId, options = {}) {
 }
 
 function closeProductDetail(options = {}) {
+  // A user-initiated close should consume the detail entry, returning to the
+  // catalog entry underneath it. Internal flows (Buy Now / Continue Shopping)
+  // pass replaceUrl so they can close the detail without interrupting checkout.
+  if (!options.fromPopstate && !options.replaceUrl) {
+    const hasCatalogParam = new URLSearchParams(window.location.search).has("catalog");
+    const isOurDetailEntry = history.state?.kailuUI === "detail" && hasCatalogParam;
+    if (isOurDetailEntry) {
+      history.back();
+      return;
+    }
+  }
+
   const modal = $("#productDetailModal");
   if (modal) modal.hidden = true;
   document.body.classList.remove("product-detail-open");
@@ -558,9 +574,10 @@ function closeProductDetail(options = {}) {
     try {
       const url = new URL(window.location.href);
       url.searchParams.delete("catalog");
-      if (url.hash !== "#products") url.hash = "products";
+      url.hash = "products";
       const state = { ...(history.state && typeof history.state === "object" ? history.state : {}) };
       delete state.kailuUI;
+      delete state.catalogId;
       history.replaceState(state, "", url.toString());
     } catch (_) { /* no-op */ }
   }
@@ -698,7 +715,7 @@ function buyNow(product, variant, quantity = 1) {
   cartState = [{ productId: product.id, sku: variant.sku, quantity: Math.min(quantity, stockQuantity(variant)) }];
   checkoutStarted = true;
   renderCart();
-  closeProductDetail();
+  closeProductDetail({ replaceUrl: true });
   openCart({ checkout: true });
   const details = $("#deliveryFields");
   if (details) details.hidden = false;
@@ -945,7 +962,7 @@ function returnToCatalogList() {
   if (successModal) successModal.hidden = true;
   document.body.classList.remove("success-modal-open");
   closeCart();
-  closeProductDetail();
+  closeProductDetail({ replaceUrl: true });
   const url = new URL(window.location.href);
   url.searchParams.delete("catalog");
   url.hash = "products";
@@ -998,13 +1015,29 @@ function closePhotoLightbox() {
 }
 
 function openSharedCatalogFromUrl() {
-  const params = new URLSearchParams(window.location.search);
-  const id = params.get("catalog");
-  if (id && productById.has(id)) {
-    openingFromSharedUrl = true;
-    openProductDetail(id, { fromUrl: true });
-    openingFromSharedUrl = false;
-  }
+  const sharedUrl = new URL(window.location.href);
+  const id = sharedUrl.searchParams.get("catalog");
+  if (!id || !productById.has(id)) return;
+
+  // A direct shared link is initially the browser's current entry, with no
+  // same-site catalog entry beneath it. Turn that entry into the catalog URL,
+  // then push the shared product URL on top so Android/iOS Back closes the
+  // popup before leaving the website. Refreshing the share URL repeats safely.
+  try {
+    const catalogUrl = new URL(sharedUrl.href);
+    catalogUrl.searchParams.delete("catalog");
+    catalogUrl.hash = "products";
+    const baseState = {
+      ...(history.state && typeof history.state === "object" ? history.state : {}),
+      kailuUI: "catalog"
+    };
+    history.replaceState(baseState, "", catalogUrl.toString());
+    history.pushState({ ...baseState, kailuUI: "detail", catalogId: String(id) }, "", sharedUrl.toString());
+  } catch (_) { /* The detail still opens if History API is unavailable. */ }
+
+  openingFromSharedUrl = true;
+  openProductDetail(id, { fromUrl: true });
+  openingFromSharedUrl = false;
 }
 
 // PRODUCT CARD INTERACTIONS
