@@ -4,7 +4,8 @@
  * The validated workbook replaces this snapshot without a page reload.
  * Keep the current Apps Script order contract and pincode data source intact.
  */
-const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzoDLyc2YwBgl_KnTio5LVKdZQ-GsLTvKQWMi1Uhg4zodfSt2sWtSn0a2SzO8RjCcbyHw/exec";
+const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbx7SEmC90BTOz6VWnkckZiJ8rtX0fFXXCKa8kVzS0Uz-e34p1XKkZuMUU4ddYQuLT_IlA/exec" 
+                       /*"https://script.google.com/macros/s/AKfycbzoDLyc2YwBgl_KnTio5LVKdZQ-GsLTvKQWMi1Uhg4zodfSt2sWtSn0a2SzO8RjCcbyHw/exec";*/
 const CURRENCY = "INR";
 const PINCODE_DATA = window.KAILU_PINCODE_DATA || Object.create(null);
 const SIZE_ORDER = ["S", "M", "L", "XL", "XXL", "3XL"];
@@ -925,24 +926,41 @@ function clientRequestId() {
   return pendingClientOrderId;
 }
 
-function verifyOrderSaved(requestId, maxAttempts = 5) {
+function verifyOrderSaved(requestId, maxAttempts = 4) {
   return new Promise(async resolve => {
     for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
       const response = await new Promise(done => {
         const callbackName = `kailuOrderVerify_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
         const script = document.createElement("script");
         let settled = false;
+        let missingCallbackTimer = 0;
         const finish = value => {
           if (settled) return;
           settled = true;
           clearTimeout(timeout);
+          clearTimeout(missingCallbackTimer);
           try { delete window[callbackName]; } catch (_) { window[callbackName] = undefined; }
           script.remove();
           done(value);
         };
         window[callbackName] = data => finish(data && typeof data === "object" ? data : null);
-        script.onerror = () => finish(null);
-        const timeout = setTimeout(() => finish(null), 1800);
+        script.onerror = () => finish({
+          ok: false, pending: true, code: "VERIFY_ENDPOINT_LOAD_FAILED",
+          message: "Google Apps Script verification could not load. Check the deployed Web App URL, access permissions, and latest deployment version. Do not submit the order again yet."
+        });
+        // Apps Script can cold-start and read the Sheet/ledger; 1.8 seconds caused
+        // false failures even after doPost had saved the order successfully.
+        const timeout = setTimeout(() => finish(null), 6500);
+        // An older deployed version may return the generic endpoint text without
+        // invoking the JSONP callback. Detect that separately from a slow response.
+        script.onload = () => {
+          missingCallbackTimer = setTimeout(() => {
+            if (!settled) finish({
+              ok: false, pending: true, code: "VERIFY_CALLBACK_MISSING",
+              message: "The published Apps Script did not return the order-verification callback. Deploy the latest Code.gs as a New version to the existing Web App deployment. The order may already be saved; check its status before retrying."
+            });
+          }, 250);
+        };
         const url = new URL(GOOGLE_SCRIPT_URL);
         url.searchParams.set("action", "verify");
         url.searchParams.set("clientRequestId", requestId);
@@ -952,10 +970,11 @@ function verifyOrderSaved(requestId, maxAttempts = 5) {
         document.head.appendChild(script);
       });
       if (response?.ok === true && response.orderId) return resolve(response);
+      if (response?.code === "VERIFY_CALLBACK_MISSING" || response?.code === "VERIFY_ENDPOINT_LOAD_FAILED") return resolve(response);
       if (response && response.pending !== true && response.message) return resolve(response);
       if (attempt < maxAttempts - 1) await new Promise(done => setTimeout(done, 350 * (attempt + 1)));
     }
-    resolve({ ok: false, message: "The Google Sheets order save could not be confirmed. Please check the Orders sheet before retrying." });
+    resolve({ ok: false, pending: true, message: "We still could not confirm whether the order was saved. Do not place it again yet. Check Order Status again or check the Orders sheet." });
   });
 }
 
@@ -992,13 +1011,13 @@ async function checkPendingOrderStatus() {
   if (verifyButton) { verifyButton.hidden = false; verifyButton.disabled = true; verifyButton.textContent = "Checking Order Status..."; }
   try {
     // This is verification only: never creates a new order or sends a second POST.
-    const result = await verifyOrderSaved(requestId, 7);
+    const result = await verifyOrderSaved(requestId, 4);
     if (result?.ok === true && result.orderId) {
       completeOrderSuccess(result.orderId);
       return;
     }
     const message = result?.pending
-      ? "The order status is still being confirmed. Do not place the order again yet. Please check the status again shortly or verify the Orders sheet."
+      ? (result?.code ? result.message : (result?.message || "The order status is still being confirmed. Do not place the order again yet. Please check the status again shortly or verify the Orders sheet."))
       : (result?.message || "The saved order could not be confirmed. Please check the Orders sheet before submitting a new order.");
     showOrderError(message, { showVerify: true });
   } catch (error) {
@@ -1070,7 +1089,7 @@ async function submitOrder() {
       console.warn("[KAILU Order] POST response was unavailable; checking the same request ID before any retry:", networkError);
     }
 
-    const result = await verifyOrderSaved(requestId, 7);
+    const result = await verifyOrderSaved(requestId, 4);
     if (result?.ok === true && result.orderId) {
       completeOrderSuccess(result.orderId);
       return;
@@ -1078,11 +1097,13 @@ async function submitOrder() {
 
     // A non-pending server result is a confirmed backend rejection. A timeout or
     // missing callback is ambiguous: show a verification-only button, not a new POST.
-    if (result && result.pending !== true && result.message && !/could not be confirmed/i.test(result.message)) {
+    if (result?.code === "VERIFY_CALLBACK_MISSING" || result?.code === "VERIFY_ENDPOINT_LOAD_FAILED") {
+      showOrderError(result.message, { showVerify: true });
+    } else if (result && result.pending !== true && result.message && !/could not be confirmed/i.test(result.message)) {
       showOrderError(result.message);
     } else {
       showOrderError(
-        "We couldn't confirm whether your order was saved. It may already be in the Orders sheet. Do not place it again yet; use Check Order Status or check the sheet first.",
+        result?.message || "We couldn't confirm whether your order was saved. It may already be in the Orders sheet. Do not place it again yet; use Check Order Status or check the sheet first.",
         { showVerify: true }
       );
     }

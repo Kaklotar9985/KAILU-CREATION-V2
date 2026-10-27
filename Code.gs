@@ -20,18 +20,28 @@ function doGet(e) {
     if (!/^kailuOrderVerify_[A-Za-z0-9_]+$/.test(callback)) {
       return ContentService.createTextOutput("Invalid verification callback.");
     }
-    const cachedResult = CacheService.getScriptCache().get(requestCacheKey_(p.clientRequestId));
-    let response = { ok: false, pending: true, message: "Order save is not confirmed yet." };
-    if (cachedResult) {
-      try { response = JSON.parse(cachedResult); }
-      catch (_) { response = { ok: true, orderId: cachedResult }; }
+    let response = { ok: false, pending: true, code: "ORDER_PENDING", message: "Order save is not confirmed yet." };
+    try {
+      const cachedResult = CacheService.getScriptCache().get(requestCacheKey_(p.clientRequestId));
+      if (cachedResult) {
+        try { response = JSON.parse(cachedResult); }
+        catch (_) { response = { ok: true, orderId: cachedResult }; }
+      }
+      // CacheService can evict entries. The persistent ledger makes confirmation
+      // and duplicate protection survive cache expiry and page reloads.
+      if (!response || response.ok !== true) {
+        const ledgerResult = findRequestLedger_(p.clientRequestId);
+        if (ledgerResult && ledgerResult.ok === true) response = ledgerResult;
+      }
+    } catch (verifyError) {
+      console.error("Order verification failed:", verifyError);
+      response = {
+        ok: false, pending: true, code: "VERIFY_SERVER_ERROR",
+        message: "Order verification temporarily failed on the Apps Script server. The order may already be saved; do not submit it again yet."
+      };
     }
-    // CacheService can evict entries. The persistent ledger makes confirmation
-    // and duplicate protection survive cache expiry and page reloads.
-    if (!response || response.ok !== true) {
-      const ledgerResult = findRequestLedger_(p.clientRequestId);
-      if (ledgerResult && ledgerResult.ok === true) response = ledgerResult;
-    }
+    // Always return the JSONP callback for valid requests, even on an internal
+    // verification error, so the frontend can show a useful diagnostic.
     return ContentService.createTextOutput(callback + "(" + JSON.stringify(response) + ");")
       .setMimeType(ContentService.MimeType.JAVASCRIPT);
   }

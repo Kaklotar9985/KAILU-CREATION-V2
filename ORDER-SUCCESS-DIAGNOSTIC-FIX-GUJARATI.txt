@@ -1,0 +1,23 @@
+KAILU CREATION — Order Success Popup Diagnostic Fix (Gujarati)
+
+Screenshots પરથી: Google Sheetમાં Order rows save થાય છે, પરંતુ website “could not be confirmed” બતાવે છે. એટલે POST/save થઈ શકે છે, પરંતુ GET JSONP verification callback સુધી confirmation પહોંચતું નથી.
+
+આ updateમાં:
+- script.js: verification timeout 1.8sથી 6.5s કર્યો (Apps Script cold-start/Sheet read માટે); retries 4 સુધી મર્યાદિત રાખ્યા.
+- script.js: endpoint error અથવા callback ન મળ્યે સ્પષ્ટ message આપે છે. Callback missing હોય તો updated Code.gs ને Web Appમાં redeploy કરવાની સૂચના આપે છે. Check Order Status read-only જ છે; તે ફરી POST કરતું નથી.
+- Code.gs: action=verifyમાં CacheService/ledger error થાય તો valid JSONP error response આપે છે, જેથી frontend timeoutની જગ્યાએ સમજાય એવો diagnostic આપી શકે.
+- Main Orders Sheetના 17 columns બદલ્યા નથી. Meta Pixel ઉમેર્યો નથી.
+
+અત્યંત જરૂરી Deploy Steps:
+1. Google Apps Script project ખોલો અને આ ZIPની root Code.gsનો સંપૂર્ણ કોડ paste કરીને Save કરો.
+2. setupOrdersSheet() એક વાર Run કરો અને authorization આપો. તે hidden _KAILU_Order_Request_Log ledger તૈયાર કરે છે.
+3. Deploy > Manage deployments > Edit (pencil) > Version: New version > Deploy પસંદ કરો. Existing Web App URL જ રાખો. Code Editorમાં Save કરવાથી deployed version બદલાતું નથી.
+4. ખાતરી કરો કે script.jsમાં GOOGLE_SCRIPT_URL તે જ Web App URL છે જે redeploy કર્યો છે.
+5. Websiteની નવી script.js/index.html GitHub Pages પર commit/publish કરીને Ctrl+F5 કરો.
+6. પહેલેથી Orders Sheetમાં દેખાતો Order ફરી submit ન કરો. `Check Order Status` button status verify કરે છે, નવો Order POST કરતું નથી.
+
+Tests:
+- Node.js JavaScript syntax check: script.js PASS.
+- Code.gs JavaScript syntax parse check: PASS (Apps Script runtime/permissionsનો live test નથી).
+- Mock regression: confirmed request returns Order ID; verification internal error returns a callback diagnostic; stale deployment without callback produces the “deploy latest Code.gs” warning; no second POST on status check.
+- Live Google Sheet / deployed Apps Script request was not run from this environment. Browser automation also unavailable, so popup visual end-to-end test remains pending.
