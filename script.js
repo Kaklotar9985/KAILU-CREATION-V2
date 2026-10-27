@@ -4,7 +4,7 @@
  * The validated workbook replaces this snapshot without a page reload.
  * Keep the current Apps Script order contract and pincode data source intact.
  */
-const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbx7SEmC90BTOz6VWnkckZiJ8rtX0fFXXCKa8kVzS0Uz-e34p1XKkZuMUU4ddYQuLT_IlA/exec";
+const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwRWdmOaNBU42c-zHnyaGGnpvFI5eU2K7G5jSsfDym10KAnnAUG926v0u34AWlmIJ3o1Q/exec";
 const CURRENCY = "INR";
 const PINCODE_DATA = window.KAILU_PINCODE_DATA || Object.create(null);
 const SIZE_ORDER = ["S", "M", "L", "XL", "XXL", "3XL"];
