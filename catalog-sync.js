@@ -379,6 +379,41 @@
   }
 
   async function start() {
+    // Local file:// pages cannot fetch sibling files with fetch(). The file picker
+    // existed in this module but was never called, so PC testing silently fell back
+    // to products-data.js and edits to the local workbook were never applied.
+    if (window.location.protocol === "file:") {
+      try {
+        const localResult = await chooseLocalWorkbookFile();
+        if (!localResult) {
+          const status = {
+            mode: "snapshot", ok: false,
+            message: "Local Excel not selected — Showing Backup Data",
+            detail: "Select the saved workbook in the Local PC Excel Test panel to test Excel changes."
+          };
+          updateStatus(status);
+          return;
+        }
+        if (!validCatalog(localResult.catalog)) {
+          throw new Error("Selected workbook did not produce a valid catalog.");
+        }
+        const localStatus = {
+          mode: "local-file", ok: true, syncedAt: new Date().toISOString(),
+          worksheet: localResult.worksheet, rows: localResult.rowCount,
+          catalogs: localResult.catalog.length,
+          message: "Loaded from selected local Excel — PC test only"
+        };
+        applyCatalog(localResult.catalog, localStatus);
+        console.info(`[KAILU Catalog Sync] Local PC test loaded ${localResult.rowCount} Excel rows into ${localResult.catalog.length} catalogs from ${localResult.workbookUrl}.`);
+      } catch (error) {
+        const detail = error && error.message ? error.message : String(error || "Unknown local Excel error");
+        const status = { mode: "snapshot", ok: false, message: "Local Excel Test Failed — Showing Backup Data", detail };
+        updateStatus(status);
+        console.error("[KAILU Catalog Sync] Local Excel test failed; showing bundled backup data.", detail);
+      }
+      return;
+    }
+
     // Reuse last successful data immediately when available. The bundled backup
     // has already rendered by the time this async loader runs.
     const cached = readCachedCatalog();

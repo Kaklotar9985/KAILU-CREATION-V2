@@ -210,9 +210,12 @@ function renderProducts() {
     const countText = `${visible.length} catalog${visible.length === 1 ? "" : "s"} to explore`;
     const syncStatus = window.KAILU_CATALOG_SYNC_STATUS || null;
     if (syncStatus?.ok) {
-      summary.textContent = `${countText} · Synced from Excel`;
+      const syncLabel = syncStatus.mode === "local-file"
+        ? "Loaded from Selected Local Excel — PC Test Only"
+        : "Synced from Excel";
+      summary.textContent = `${countText} · ${syncLabel}`;
       summary.dataset.syncState = "success";
-      summary.title = syncStatus.syncedAt ? `Excel synced at ${new Date(syncStatus.syncedAt).toLocaleString()}` : "Catalog data loaded from Excel";
+      summary.title = syncStatus.syncedAt ? `Excel loaded at ${new Date(syncStatus.syncedAt).toLocaleString()}${syncStatus.mode === "local-file" ? " (local PC test; select the saved workbook again after editing)" : ""}` : "Catalog data loaded from Excel";
     } else if (syncStatus && syncStatus.ok === false) {
       const fallbackLabel = syncStatus.mode === "cache"
         ? "Sync Failed — Showing Last Synced Data"
