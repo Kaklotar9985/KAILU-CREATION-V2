@@ -1,0 +1,17 @@
+KAILU CREATION — Mobile Order Verification Fix
+
+શું સુધાર્યું:
+1. script.js માં Apps Script URL ને હાલના GitHub Repository માં રહેલા endpoint સાથે મેળ ખાતો કર્યો.
+2. Verification script load error / callback missing થાય ત્યારે order ફરીથી POST કર્યા વિના retry ઉમેર્યું.
+3. index.html માં script.js cache version બદલ્યો જેથી જૂની JavaScript file ફરી વપરાવાની શક્યતા ઘટે.
+
+PC/GitHub deployment:
+1. ZIP Extract કરો.
+2. Repository root માં script.js અને index.html replace કરીને commit/publish કરો.
+3. Mobile_1 પર Chrome > Settings > Site settings > All sites > kaklotar9985.github.io > Clear & reset કરો.
+4. સીધી URL https://kaklotar9985.github.io/KAILU-CREATION-V2/ Chrome માં ખોલો અને reload કરો.
+5. અગાઉ Save થયેલા Order ને ફરીથી submit ન કરો. પહેલા Orders Sheet માં Order ID તપાસો અથવા Check Order Status વાપરો.
+
+Testing મર્યાદા:
+- JavaScript syntax અને ZIP integrity offline ચકાસી શકાય છે.
+- Actual Android Mobile_1 પર live Google Apps Script verification આ environment માં ચલાવીને ચકાસી શકાતી નથી.

@@ -982,7 +982,14 @@ function verifyOrderSaved(requestId, maxAttempts = 4) {
         document.head.appendChild(script);
       });
       if (response?.ok === true && response.orderId) return resolve(response);
-      if (response?.code === "VERIFY_CALLBACK_MISSING" || response?.code === "VERIFY_ENDPOINT_LOAD_FAILED") return resolve(response);
+      // Retry transient verification load failures. This loop only verifies status; it never re-posts an order.
+      if (response?.code === "VERIFY_CALLBACK_MISSING" || response?.code === "VERIFY_ENDPOINT_LOAD_FAILED") {
+        if (attempt < maxAttempts - 1) {
+          await new Promise(done => setTimeout(done, 700 * (attempt + 1)));
+          continue;
+        }
+        return resolve(response);
+      }
       if (response && response.pending !== true && response.message) return resolve(response);
       if (attempt < maxAttempts - 1) await new Promise(done => setTimeout(done, 350 * (attempt + 1)));
     }
