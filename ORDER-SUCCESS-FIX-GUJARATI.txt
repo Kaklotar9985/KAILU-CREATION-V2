@@ -1,0 +1,30 @@
+KAILU CREATION — ORDER SUCCESS POPUP FIX (Gujarati)
+
+Screenshot પરથી મળેલો નિષ્કર્ષ
+- Screenshotમાં Order ID `KC-20261027-114258-243` માટે Email notification મળેલી છે અને Google Sheetમાં એની row પણ દેખાય છે; website પર confirmation error આવ્યું છે. એટલે એ screenshotના Order માટે save થવાની પ્રક્રિયા થઈ ગઈ હતી, પરંતુ browserને confirmation મળ્યું નહોતું. એ જ Order ફરી submit ન કરવો.
+- Frontend `fetch(..., mode: "no-cors")` વાપરે છે. આ response opaque હોવાથી તેને success તરીકે વાંચી શકાતો નથી; ત્યારબાદ JSONP `action=verify` callback જરૂરી છે. Google Apps Scriptનું **deployed version** verification route/caching code સાથે મેળ ન ખાતું હોય, callback fail થાય અથવા CacheService entry ન મળે તો Order save થયા છતાં popup ન દેખાય. Code Editorમાં Save કરવું એકલું પૂરતું નથી; web app deployment New version કરવી પડે છે.
+
+Files changed
+- `script.js`: success popup ફક્ત confirmed `ok:true` + Order ID પછી; ambiguous verification/network responseમાં “Check Order Status” button દેખાય છે. આ button read-only verification કરે છે અને Order POST ફરી મોકલતું નથી. Unknown state પર duplicate submit ન કરવા સ્પષ્ટ message.
+- `index.html`: status-check button ઉમેર્યો અને script cache-busting version અપડેટ કર્યો.
+- `style.css`: lightweight status-check button style ઉમેર્યું.
+- `data/Kailu Creation Orders Detail_Apps Script_Code.gs`: verification route CacheService સાથે persistent hidden ledger lookup કરે; existing request ID ફરી આવે તો existing Order ID return કરે.
+- `Code.gs`: standalone copy, Apps Script editorમાં paste કરવા માટે.
+- Main Orders tabનો 17-column A:Q layout બદલ્યો નથી. Internal ledger માટે hidden `_KAILU_Order_Request_Log` tab બનાવાય છે.
+
+Deploy steps — website અને Apps Script બંને
+1. GitHub repository `Kaklotar9985/KAILU-CREATION-V2`માં ZIPના project rootની website files upload/commit કરો.
+2. Google Apps Script editor ખોલો, projectના `Code.gs`માં આ ZIPની root `Code.gs`નો કોડ સંપૂર્ણ paste કરો અને Save કરો.
+3. `setupOrdersSheet` function એક વાર Run કરો અને જરૂરી authorization આપો. તે Orders tab અને hidden verification ledger તૈયાર કરશે. Existing order rows જાળવવા માટે schema migration code છે.
+4. Apps Script: Deploy → Manage deployments → Edit (pencil) → Version: New version → Deploy. ખાતરી કરો કે existing Web App URL આ નવી version વાપરે છે. માત્ર Save કરવાથી deployed endpoint update થતો નથી.
+5. Websiteમાં Ctrl+F5 કરો. નવો test order મૂકો તો પહેલાં માત્ર controlled test customer details વાપરો. Verification સફળ થયા પછી જ popup દેખાવું જોઈએ.
+6. Error આવે તો “Check Order Status” દબાવો. તે બીજો order મોકલતો નથી. Orders sheetમાં order પહેલેથી દેખાય તો તેને ફરી submit ન કરો.
+
+Test report
+- `node --check script.js`: PASS.
+- `node --check catalog-sync.js`: PASS.
+- `node --check Code.gs` (JavaScript syntax parse check): PASS.
+- Static checks: status button/handler, success gated on confirmed Order ID, 17-column schema unchanged, no Meta Pixel code introduced: PASS.
+- Mock Apps Script regression: one order saved; JSONP verification returned Order ID; same request ID POST did not append duplicate; clearing CacheService still allowed verification through persistent ledger: PASS.
+- Live Google Sheet / deployed Apps Script test: NOT run from this environment.
+- Desktop/mobile visual end-to-end test: NOT run (browser automation is not available here).

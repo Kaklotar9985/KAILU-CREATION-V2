@@ -151,6 +151,7 @@
       <input id="state" class="customer-input auto-location-field" type="text" placeholder="Auto-filled from PIN code" autocomplete="address-level1" required>
       <button id="whatsappOrder" class="whatsapp-button" type="button"><span>✓</span> Place Order</button>
       <small id="orderError" class="order-error" role="alert" aria-live="assertive" hidden></small>
+      <button id="verifyOrderStatus" class="verify-order-status" type="button" hidden>Check Order Status</button>
       <small class="privacy-note">Your order details will be submitted securely to the configured order system.</small>
       </div>
       </div>
@@ -176,7 +177,7 @@
   <script src="pincode-serviceability.js"></script>
   <!-- Render the last-known-good catalog immediately; Excel sync updates it in the background. -->
   <script src="products-data.js?v=kailu-excel-sync-fix-20261027-1"></script>
-  <script src="script.js?v=kailu-excel-sync-fix-20261027-1"></script>
+  <script src="script.js?v=kailu-order-success-fix-20261027-2"></script>
   <script src="catalog-sync.js?v=excel-catalog-sync-fix-20261027-1"></script>
 </body>
 </html>

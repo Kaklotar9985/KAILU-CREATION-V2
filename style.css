@@ -241,6 +241,15 @@ body.photo-viewer-open { overflow:hidden !important; }
 }
 
 
+
+.verify-order-status {
+  display:inline-flex; align-items:center; justify-content:center; margin:8px 0 2px;
+  min-height:38px; padding:8px 14px; border:1px solid #b78a3d; border-radius:8px;
+  background:#fffaf1; color:#75531d; font-size:13px; font-weight:700; cursor:pointer;
+}
+.verify-order-status[hidden] { display:none !important; }
+.verify-order-status:disabled { opacity:.65; cursor:wait; }
+
 /* Order submitted success message */
 .success-modal[hidden] { display:none !important; }
 .success-modal {

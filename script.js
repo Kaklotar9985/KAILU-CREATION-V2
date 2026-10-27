@@ -899,15 +899,24 @@ function validatePincode(options = {}) {
   return { valid: true, record: match };
 }
 
-function showOrderError(message) {
+function showOrderError(message, options = {}) {
   const error = $("#orderError");
   if (error) { error.textContent = message; error.hidden = false; }
+  const verifyButton = $("#verifyOrderStatus");
+  if (verifyButton) {
+    verifyButton.hidden = options.showVerify !== true || !pendingClientOrderId;
+    verifyButton.disabled = false;
+    verifyButton.textContent = "Check Order Status";
+  }
   showToast(message);
 }
 function clearOrderError() {
   const error = $("#orderError");
   if (error) { error.textContent = ""; error.hidden = true; }
+  const verifyButton = $("#verifyOrderStatus");
+  if (verifyButton) { verifyButton.hidden = true; verifyButton.disabled = false; verifyButton.textContent = "Check Order Status"; }
 }
+
 function clientRequestId() {
   if (pendingClientOrderId) return pendingClientOrderId;
   pendingClientOrderId = window.crypto?.randomUUID
@@ -950,6 +959,59 @@ function verifyOrderSaved(requestId, maxAttempts = 5) {
   });
 }
 
+function completeOrderSuccess(orderId) {
+  // Only called after the Apps Script reports a confirmed row for this request ID.
+  pendingClientOrderId = "";
+  cartState = [];
+  checkoutStarted = false;
+  renderCart();
+  closeCart();
+  ["customerName", "mobileNumber", "houseBuilding", "landmark", "roadArea", "pincode", "city", "state"].forEach(id => {
+    const field = $("#" + id);
+    if (field) { field.value = ""; field.classList.remove("field-invalid"); field.setAttribute("aria-invalid", "false"); }
+  });
+  lastPincodeValue = "";
+  setManualLocationEntry(true);
+  setPincodeFeedback("Enter a 6-digit PIN code to fill City and State automatically.", "info");
+  clearOrderError();
+  const successModal = $("#orderSuccessModal");
+  const orderIdSpot = $("#successOrderId");
+  if (orderIdSpot) orderIdSpot.textContent = `Order ID: ${orderId}`;
+  if (successModal) successModal.hidden = false;
+  document.body.classList.add("success-modal-open");
+  const continueButton = $("#continueShoppingSuccess");
+  if (continueButton) continueButton.focus({ preventScroll: true });
+}
+
+async function checkPendingOrderStatus() {
+  if (isSubmittingOrder || !pendingClientOrderId) return;
+  const verifyButton = $("#verifyOrderStatus");
+  const requestId = pendingClientOrderId;
+  clearOrderError();
+  isSubmittingOrder = true;
+  if (verifyButton) { verifyButton.hidden = false; verifyButton.disabled = true; verifyButton.textContent = "Checking Order Status..."; }
+  try {
+    // This is verification only: never creates a new order or sends a second POST.
+    const result = await verifyOrderSaved(requestId, 7);
+    if (result?.ok === true && result.orderId) {
+      completeOrderSuccess(result.orderId);
+      return;
+    }
+    const message = result?.pending
+      ? "The order status is still being confirmed. Do not place the order again yet. Please check the status again shortly or verify the Orders sheet."
+      : (result?.message || "The saved order could not be confirmed. Please check the Orders sheet before submitting a new order.");
+    showOrderError(message, { showVerify: true });
+  } catch (error) {
+    console.error("[KAILU Order] Status verification failed:", error);
+    showOrderError("Could not verify the order status. Do not submit again until you check the Orders sheet.", { showVerify: true });
+  } finally {
+    isSubmittingOrder = false;
+    if (verifyButton && !verifyButton.hidden) { verifyButton.disabled = false; verifyButton.textContent = "Check Order Status"; }
+    const submitButton = $("#whatsappOrder");
+    if (submitButton) submitButton.disabled = false;
+  }
+}
+
 async function submitOrder() {
   if (isSubmittingOrder) return;
   clearOrderError();
@@ -977,76 +1039,59 @@ async function submitOrder() {
 
   const total = entries.reduce((sum, item) => sum + Number(item.variant.price) * item.quantity, 0);
   const items = entries.map(({ product, variant, quantity, lineTotal }) => ({
-    sku: variant.sku,
-    productName: product.name,
-    name: product.name,
-    color: product.color || "",
-    size: variant.size,
-    quantity,
-    qty: quantity,
-    unitPrice: variant.price,
-    lineTotal
+    sku: variant.sku, productName: product.name, name: product.name, color: product.color || "",
+    size: variant.size, quantity, qty: quantity, unitPrice: variant.price, lineTotal
   }));
   const totalQty = entries.reduce((sum, item) => sum + item.quantity, 0);
+  // Keep one stable request ID until the outcome is confirmed. Retries therefore
+  // reuse the same idempotency key instead of creating a duplicate order.
+  const requestId = clientRequestId();
   const payload = new URLSearchParams({
-    store: "KAILU CREATION™",
-    clientRequestId: clientRequestId(),
-    customerName: $("#customerName").value.trim(),
-    mobileNumber,
+    store: "KAILU CREATION™", clientRequestId: requestId,
+    customerName: $("#customerName").value.trim(), mobileNumber,
     size: items.map(item => `${item.color} ${item.size}`.trim()).join("; "),
-    qty: String(totalQty),
-    houseBuilding: $("#houseBuilding").value.trim(),
-    landmark: $("#landmark").value.trim(),
-    roadArea: $("#roadArea").value.trim(),
-    pincode,
-    city,
-    state,
-    paymentMethod: "Cash on Delivery (COD)",
-    currency: CURRENCY,
-    total: String(total),
-    items: JSON.stringify(items)
+    qty: String(totalQty), houseBuilding: $("#houseBuilding").value.trim(),
+    landmark: $("#landmark").value.trim(), roadArea: $("#roadArea").value.trim(),
+    pincode, city, state, paymentMethod: "Cash on Delivery (COD)", currency: CURRENCY,
+    total: String(total), items: JSON.stringify(items)
   });
+
   const submitButton = $("#whatsappOrder");
   const originalHtml = submitButton.innerHTML;
   isSubmittingOrder = true;
   submitButton.disabled = true;
   submitButton.textContent = "Submitting Order...";
   try {
-    // Apps Script ContentService redirects cross-origin responses. Submit the simple form POST,
-    // then use a read-only JSONP verification request. This avoids treating an opaque no-cors
-    // response as success and confirms the backend recorded the order before showing the popup.
-    const requestId = clientRequestId();
-    await fetch(GOOGLE_SCRIPT_URL, {
-      method: "POST",
-      mode: "no-cors",
-      body: payload
-    });
-    const result = await verifyOrderSaved(requestId);
-    if (result?.ok !== true || !result?.orderId) {
-      throw new Error(result?.message || "The order save could not be confirmed. Please try again.");
+    // Apps Script's opaque no-cors response cannot prove success. A network error
+    // is treated as an unknown outcome, then the same request ID is verified.
+    try {
+      await fetch(GOOGLE_SCRIPT_URL, { method: "POST", mode: "no-cors", body: payload });
+    } catch (networkError) {
+      console.warn("[KAILU Order] POST response was unavailable; checking the same request ID before any retry:", networkError);
     }
-    // Only a server-confirmed successful response reaches the success popup.
-    pendingClientOrderId = "";
-    cartState = [];
-    checkoutStarted = false;
-    renderCart();
-    closeCart();
-    ["customerName", "mobileNumber", "houseBuilding", "landmark", "roadArea", "pincode", "city", "state"].forEach(id => {
-      const field = $("#" + id); if (field) { field.value = ""; field.classList.remove("field-invalid"); field.setAttribute("aria-invalid", "false"); }
-    });
-    lastPincodeValue = "";
-    setManualLocationEntry(true);
-    setPincodeFeedback("Enter a 6-digit PIN code to fill City and State automatically.", "info");
-    const successModal = $("#orderSuccessModal");
-    const orderIdSpot = $("#successOrderId");
-    if (orderIdSpot) orderIdSpot.textContent = `Order ID: ${result.orderId}`;
-    successModal.hidden = false;
-    document.body.classList.add("success-modal-open");
-    const continueButton = $("#continueShoppingSuccess");
-    if (continueButton) continueButton.focus({ preventScroll: true });
+
+    const result = await verifyOrderSaved(requestId, 7);
+    if (result?.ok === true && result.orderId) {
+      completeOrderSuccess(result.orderId);
+      return;
+    }
+
+    // A non-pending server result is a confirmed backend rejection. A timeout or
+    // missing callback is ambiguous: show a verification-only button, not a new POST.
+    if (result && result.pending !== true && result.message && !/could not be confirmed/i.test(result.message)) {
+      showOrderError(result.message);
+    } else {
+      showOrderError(
+        "We couldn't confirm whether your order was saved. It may already be in the Orders sheet. Do not place it again yet; use Check Order Status or check the sheet first.",
+        { showVerify: true }
+      );
+    }
   } catch (error) {
-    const message = error?.message || "The order save could not be confirmed. Check your internet and try again.";
-    showOrderError(message);
+    console.error("[KAILU Order] Submission/verification error:", error);
+    showOrderError(
+      "Your order status is unknown. Do not submit a second order until you verify the Orders sheet.",
+      { showVerify: true }
+    );
   } finally {
     isSubmittingOrder = false;
     submitButton.disabled = false;
@@ -1274,6 +1319,7 @@ $("#continueToDetails").addEventListener("click", () => {
   if (first) first.focus({ preventScroll: true });
 });
 $("#whatsappOrder").addEventListener("click", submitOrder);
+$("#verifyOrderStatus").addEventListener("click", checkPendingOrderStatus);
 $("#continueShoppingSuccess").addEventListener("click", returnToCatalogList);
 $("#closePhotoLightbox").addEventListener("click", closePhotoLightbox);
 $("#photoLightbox").addEventListener("click", event => { if (event.target.id === "photoLightbox") closePhotoLightbox(); });
