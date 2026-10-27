@@ -4,8 +4,7 @@
  * The validated workbook replaces this snapshot without a page reload.
  * Keep the current Apps Script order contract and pincode data source intact.
  */
-const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbx7SEmC90BTOz6VWnkckZiJ8rtX0fFXXCKa8kVzS0Uz-e34p1XKkZuMUU4ddYQuLT_IlA/exec" 
-                       /*"https://script.google.com/macros/s/AKfycbzoDLyc2YwBgl_KnTio5LVKdZQ-GsLTvKQWMi1Uhg4zodfSt2sWtSn0a2SzO8RjCcbyHw/exec";*/
+const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbx7SEmC90BTOz6VWnkckZiJ8rtX0fFXXCKa8kVzS0Uz-e34p1XKkZuMUU4ddYQuLT_IlA/exec";
 const CURRENCY = "INR";
 const PINCODE_DATA = window.KAILU_PINCODE_DATA || Object.create(null);
 const SIZE_ORDER = ["S", "M", "L", "XL", "XXL", "3XL"];
@@ -64,7 +63,16 @@ const toast = $("#toast");
 let toastTimer = null;
 let cartState = [];
 let isSubmittingOrder = false;
-let pendingClientOrderId = "";
+const PENDING_ORDER_STORAGE_KEY = "kailu_pending_order_request_id_v1";
+function readPendingOrderRequestId() {
+  try { return sessionStorage.getItem(PENDING_ORDER_STORAGE_KEY) || ""; }
+  catch (_) { return ""; }
+}
+function clearPendingOrderRequestId() {
+  pendingClientOrderId = "";
+  try { sessionStorage.removeItem(PENDING_ORDER_STORAGE_KEY); } catch (_) {}
+}
+let pendingClientOrderId = readPendingOrderRequestId();
 let checkoutStarted = false;
 let currentDetailProduct = null;
 let currentDetailVariant = null;
@@ -791,6 +799,9 @@ function openCart(options = {}) {
   document.body.style.overflow = "hidden";
   checkoutStarted = options.checkout === true;
   renderCart();
+  if (pendingClientOrderId && !isSubmittingOrder) {
+    showOrderError("A previous order may already be saved. Check its status before submitting another order.", { showVerify: true });
+  }
   if (options.checkout) {
     const first = $("#customerName");
     if (first) setTimeout(() => first.focus({ preventScroll: true }), 60);
@@ -923,6 +934,7 @@ function clientRequestId() {
   pendingClientOrderId = window.crypto?.randomUUID
     ? window.crypto.randomUUID()
     : `KC-${Date.now()}-${Math.random().toString(36).slice(2, 12)}`;
+  try { sessionStorage.setItem(PENDING_ORDER_STORAGE_KEY, pendingClientOrderId); } catch (_) {}
   return pendingClientOrderId;
 }
 
@@ -980,7 +992,7 @@ function verifyOrderSaved(requestId, maxAttempts = 4) {
 
 function completeOrderSuccess(orderId) {
   // Only called after the Apps Script reports a confirmed row for this request ID.
-  pendingClientOrderId = "";
+  clearPendingOrderRequestId();
   cartState = [];
   checkoutStarted = false;
   renderCart();
@@ -1019,7 +1031,12 @@ async function checkPendingOrderStatus() {
     const message = result?.pending
       ? (result?.code ? result.message : (result?.message || "The order status is still being confirmed. Do not place the order again yet. Please check the status again shortly or verify the Orders sheet."))
       : (result?.message || "The saved order could not be confirmed. Please check the Orders sheet before submitting a new order.");
-    showOrderError(message, { showVerify: true });
+    if (result && result.pending !== true && result.ok !== true) {
+      clearPendingOrderRequestId(); // Definite rejection: safe to correct the form and submit a new request.
+      showOrderError(message);
+    } else {
+      showOrderError(message, { showVerify: true });
+    }
   } catch (error) {
     console.error("[KAILU Order] Status verification failed:", error);
     showOrderError("Could not verify the order status. Do not submit again until you check the Orders sheet.", { showVerify: true });
@@ -1033,6 +1050,15 @@ async function checkPendingOrderStatus() {
 
 async function submitOrder() {
   if (isSubmittingOrder) return;
+  // If an earlier request has an unknown outcome, verify that SAME request first.
+  // Never issue a second POST merely because the customer tapped Place Order again.
+  if (pendingClientOrderId) {
+    await checkPendingOrderStatus();
+    if (pendingClientOrderId) {
+      showOrderError("A previous order may already be saved. Use Check Order Status or check the Orders sheet before trying another order.", { showVerify: true });
+    }
+    return;
+  }
   clearOrderError();
   const entries = cartLineItems();
   if (!entries.length) { showOrderError("Your cart is empty. Please add a catalog first."); return; }
@@ -1100,6 +1126,7 @@ async function submitOrder() {
     if (result?.code === "VERIFY_CALLBACK_MISSING" || result?.code === "VERIFY_ENDPOINT_LOAD_FAILED") {
       showOrderError(result.message, { showVerify: true });
     } else if (result && result.pending !== true && result.message && !/could not be confirmed/i.test(result.message)) {
+      clearPendingOrderRequestId(); // Explicit backend rejection is not an unknown save outcome.
       showOrderError(result.message);
     } else {
       showOrderError(
@@ -1420,3 +1447,22 @@ renderProducts();
 renderCart();
 // Query-string sharing links reopen the exact color/catalog on refresh.
 openSharedCatalogFromUrl();
+
+// Mobile browsers may discard the page after an opaque POST response. Restore
+// the same request ID and verify read-only; never submit a second POST on reload.
+if (pendingClientOrderId) {
+  const verifyButton = $("#verifyOrderStatus");
+  if (verifyButton) verifyButton.hidden = false;
+  window.setTimeout(async () => {
+    const requestId = pendingClientOrderId;
+    if (!requestId || isSubmittingOrder) return;
+    try {
+      const result = await verifyOrderSaved(requestId, 2);
+      if (pendingClientOrderId === requestId && result?.ok === true && result.orderId) {
+        completeOrderSuccess(result.orderId);
+      }
+    } catch (error) {
+      console.warn("[KAILU Order] Restored request verification did not complete; keep the request ID for manual status checking.", error);
+    }
+  }, 500);
+}

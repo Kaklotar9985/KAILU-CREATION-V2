@@ -1,0 +1,27 @@
+KAILU CREATION — MOBILE ORDER SUCCESS POPUP FIX
+
+What was found
+- The supplied diagnostic ZIP's script.js used an older Apps Script Web App URL (AKfycbzo...).
+- The current public KAILU-CREATION-V2 repository's script.js uses a different Web App URL (AKfycbx7...). Verification must use the same deployed endpoint that receives the order POST.
+- The mobile screenshot still showed the older generic error and did not show the Check Order Status control. This is consistent with a stale/different script version being served, although a live mobile browser run was not available here.
+
+Files changed
+- script.js: point order POST and read-only JSONP verification at the current URL used in the public repository; persist the in-flight clientRequestId in sessionStorage; verify the same request after a mobile refresh; never send a new POST while an earlier request has an unknown outcome; retain the Check Order Status action for ambiguous outcomes. A definitive backend rejection releases the request ID so the customer can correct the form and retry.
+- index.html: change script.js query-string version to kailu-order-success-mobile-fix-20261027-1 to bypass cached old JavaScript.
+- Code.gs and the copy under data/: kept the JSONP verification handler and idempotency ledger already present in the package; no Orders Sheet column changes.
+
+Important: this ZIP does not modify/deploy the live Google Apps Script project by itself. If the selected Web App URL does not have the current Code.gs deployed, Apps Script must be redeployed as a New version on the same Web App deployment.
+
+Publish steps
+1. Backup the GitHub repository.
+2. Replace the website files from this ZIP in the repository root and commit/push.
+3. In Apps Script, make sure the deployed Code.gs has doGet(action=verify) and JSONP callback support; then Deploy > Manage deployments > Edit > New version > Deploy.
+4. Confirm the Web App endpoint in script.js is the same deployment URL. Do not paste a different deployment URL unless it is deployed with the matching Code.gs.
+5. On mobile, open the site in Chrome and refresh/reopen it after publish. For an old order whose status is uncertain, check the Orders sheet and do not place it again. New orders created after this fix will keep their request ID in the same browser tab and can be verified after a refresh.
+
+Tests actually run here
+- JS syntax check for script.js and catalog-sync.js: PASS.
+- Apps Script syntax parse by Node check (syntax only): PASS.
+- Static assertions: active endpoint matches public repository source; request ID persistence exists; Success requires ok=true and orderId; ambiguous outcomes use read-only verification: PASS.
+- ZIP integrity: PASS.
+- Live Google Apps Script POST/GET verification and Android Chrome visual test: NOT RUN. Network/browser restrictions prevented end-to-end testing. Therefore popup success on the live phone must be confirmed after publishing/deploying both sides.
