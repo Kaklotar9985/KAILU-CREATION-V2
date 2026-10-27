@@ -1,0 +1,27 @@
+KAILU CREATION — Order Verification Endpoint Fix
+
+કારણ:
+આપેલી ZIPના script.jsમાં જૂનો Google Apps Script Web App URL હતો. વપરાશકર્તાએ આપેલો હાલનો Web App URL હવે runtime configમાં મૂક્યો છે, જેથી order POST અને verification એક જ endpoint વાપરે.
+
+આ ZIPમાં કરેલો સુધારો:
+- script.js અને text instructionsમાં જૂના endpointને વપરાશકર્તાએ આપેલો હાલનો Web App URL સાથે align કર્યો.
+- index.htmlમાં script.js cache-busting version અપડેટ કર્યો, જેથી browser જૂનો JavaScript cacheમાંથી ન લાવે.
+- બાકીની Product, Cart, Checkout, Google Sheets અને Popup logic જાળવી રાખી.
+
+આવશ્યક Live ચકાસણી:
+1. Apps Scriptમાં Deploy > Manage deployments ખોલીને Web App URL આ ZIPના script.jsમાં રહેલા URL સાથે બરાબર સરખાવો: https://script.google.com/macros/s/AKfycbz05rPxa3wiMHs4If4EbIn1Uwk--_e8_0apfOysybBWTHFEOqPgZ7ryeYXhMKfrkYmBPA/exec
+2. Execute as: Me અને Who has access: Anyone (જો ઉપલબ્ધ હોય અને anonymous customer access જોઈએ) ચકાસો.
+3. Mobile Chromeમાં આ નવા endpointના read-only verify queryથી test કરો: ?action=verify&clientRequestId=KAILU_DIAGNOSTIC_NOT_AN_ORDER&callback=kailuOrderVerify_test
+4. યોગ્ય responseમાં kailuOrderVerify_test({...}); દેખાવું જોઈએ. Base /exec URL પર માત્ર 'endpoint is running' દેખાવું એ verify check નથી.
+5. પહેલેથી Sheetsમાં રહેલો order ફરી submit ન કરવો. પહેલા Order ID/Check Order Status ચકાસો.
+
+Test status:
+- ZIP integrity અને endpoint string alignment: આ package પર static check કરી શકાય.
+- Live Mobile verification, Apps Script permissions અને real order end-to-end: આ environmentમાંથી ચલાવ્યા નથી; Deployment પછી test કરવાના બાકી.
+
+
+વર્તમાન URL (script.jsમાં ગોઠવેલ):
+https://script.google.com/macros/s/AKfycbz05rPxa3wiMHs4If4EbIn1Uwk--_e8_0apfOysybBWTHFEOqPgZ7ryeYXhMKfrkYmBPA/exec
+
+Read-only diagnostic URL (નવો order બનાવતો નથી):
+https://script.google.com/macros/s/AKfycbz05rPxa3wiMHs4If4EbIn1Uwk--_e8_0apfOysybBWTHFEOqPgZ7ryeYXhMKfrkYmBPA/exec?action=verify&clientRequestId=KAILU_DIAGNOSTIC_NOT_AN_ORDER&callback=kailuOrderVerify_test
