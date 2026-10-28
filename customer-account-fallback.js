@@ -24,7 +24,7 @@
       modal.innerHTML = `
         <section class="ka-account-panel" style="height:auto;min-height:0;max-width:560px">
           <header class="ka-account-header">
-            <div class="ka-brand-mini"><img src="images/kailu-logo-mark-tm.webp" alt=""><div><strong id="kaLoadHelpTitle">KAILU CREATION</strong><small>CUSTOMER LOGIN HELP</small></div></div>
+            <div class="ka-brand-mini"><img src="images/kailu-logo-mark-tm.webp" alt=""><div><strong id="kaLoadHelpTitle">KAILU CREATION<sup class="brand-trademark">™</sup></strong><small>CUSTOMER LOGIN HELP</small></div></div>
             <button class="ka-close" type="button" data-ka-help-close aria-label="Close help">×</button>
           </header>
           <div class="ka-account-body" style="padding:25px">

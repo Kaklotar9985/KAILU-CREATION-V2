@@ -51,7 +51,7 @@ function buildModal() {
   modal.innerHTML = `
     <section class="ka-account-panel">
       <header class="ka-account-header">
-        <div class="ka-brand-mini"><img src="images/kailu-logo-mark-tm.webp" alt=""><div><strong id="kaDialogTitle">KAILU CREATION</strong><small>MY ACCOUNT</small></div></div>
+        <div class="ka-brand-mini"><img src="images/kailu-logo-mark-tm.webp" alt=""><div><strong id="kaDialogTitle">KAILU CREATION<sup class="brand-trademark">™</sup></strong><small>MY ACCOUNT</small></div></div>
         <button class="ka-close" type="button" data-ka-close aria-label="Close account">×</button>
       </header>
       <div id="kaAccountBody" class="ka-account-body"><div class="ka-loading"><span class="ka-spinner"></span><p>Checking your customer account…</p></div></div>
@@ -106,10 +106,10 @@ function renderLogin() {
   body.innerHTML = `
     <div class="ka-login-layout">
       <div class="ka-login-art"><span class="ka-login-star">✦</span><h2>Your Style,<br><em>Our Creation.</em></h2><p>Your catalog, addresses and order history — in one place.</p><img src="images/catalog-1-1.webp" alt="KAILU CREATION collection" loading="lazy"></div>
-      <div class="ka-login-content"><span class="ka-eyebrow">CUSTOMER ACCOUNT</span><h2>Welcome to KAILU</h2><p>Continue with your Google Account. First sign-in automatically creates your customer account.</p>
+      <div class="ka-login-content"><span class="ka-eyebrow">CUSTOMER ACCOUNT</span><h2>Welcome to<br>KAILU CREATION<sup class="brand-trademark">™</sup></h2><p>Continue with your Google Account. First sign-in automatically creates your customer account.</p>
         <button type="button" id="kaGoogleSignIn" class="ka-google-button" ${loginBusy ? "disabled" : ""}><span class="ka-google-g">G</span><span>${loginBusy ? "Opening Google…" : "Continue with Google"}</span><span class="ka-spinner ka-button-spinner" ${loginBusy ? "" : "hidden"}></span></button>
         <button type="button" id="kaCreateAccount" class="ka-create-account" ${loginBusy ? "disabled" : ""}>New customer? Create an account with Google</button>
-        <p class="ka-login-note">No separate KAILU password is created or stored.</p>
+        <p class="ka-login-note">No separate KAILU CREATION™ password is created or stored.</p>
         <a class="ka-recovery-link" href="https://accounts.google.com/signin/recovery" target="_blank" rel="noopener noreferrer">Forgot your Google password?</a>
         ${!firebaseConfigured ? `<div class="ka-setup-warning"><strong>Firebase setup required</strong><span>Paste your existing Firebase Web App config into <code>firebase-config.js</code>, then reload this page.</span></div>` : ""}
         ${statusMarkup()}
@@ -135,7 +135,7 @@ function renderAccountUI() {
     ? `<img class="ka-avatar" src="${h(currentUser.photoURL)}" alt="Customer profile photo" referrerpolicy="no-referrer">`
     : `<span class="ka-avatar ka-avatar-initial">${h((currentUser.displayName || currentUser.email || "C").trim().charAt(0).toUpperCase())}</span>`;
   body.innerHTML = `
-    <div class="ka-user-strip">${avatar}<div class="ka-user-text"><strong>${h(currentUser.displayName || "KAILU Customer")}</strong><small>${h(currentUser.email || "")}</small></div><button type="button" class="ka-signout" data-ka-signout>Log out</button></div>
+    <div class="ka-user-strip">${avatar}<div class="ka-user-text"><strong>${h(currentUser.displayName || "KAILU CREATION Customer")}</strong><small>${h(currentUser.email || "")}</small></div><button type="button" class="ka-signout" data-ka-signout>Log out</button></div>
     <nav class="ka-tabs" aria-label="My Account sections">
       ${[["profile","Profile"],["addresses","Address Book"],["orders","Order History"],["wishlist","Wishlist"]].map(([key,label]) => `<button type="button" data-ka-tab="${key}" class="ka-tab ${activeTab === key ? "active" : ""}" aria-pressed="${activeTab === key}">${label}</button>`).join("")}
     </nav>
@@ -251,13 +251,43 @@ function readableError(error) {
 
 function currentProfileDoc() { return doc(db, "users", currentUser.uid); }
 
+function profileReadHelp(error) {
+  const code = String(error?.code || "");
+  const message = String(error?.message || "");
+  if (code.includes("permission-denied") || /missing or insufficient permissions/i.test(message)) {
+    return "Firestore denied access. In Firebase Console → Firestore Database → Rules, publish owner-only rules that allow the signed-in user's UID to read /users/{uid}. Do not open the database publicly.";
+  }
+  if (code.includes("failed-precondition") || code.includes("not-found") || /database.*does not exist/i.test(message)) {
+    return "Check that Cloud Firestore Database has actually been created in this same Firebase project, and that firebase-config.js uses the project ID shown in Firebase Console.";
+  }
+  if (code.includes("unavailable") || code.includes("network") || /did not respond|taking too long/i.test(message)) {
+    return "The Google account is signed in, but Firestore did not answer. Check internet/VPN or browser extensions, confirm Firestore Database exists in this same project, and inspect F12 → Console for the underlying Firebase error. Then choose Retry.";
+  }
+  return readableError(error) + " If this continues, check F12 → Console and Firestore Rules in Firebase Console.";
+}
+
 async function renderProfile(target) {
-  const snap = await getDoc(currentProfileDoc());
-  const profile = snap.exists() ? snap.data() : {};
+  let profile = {};
+  let profileReadError = null;
+  try {
+    const snap = await withTimeout(
+      getDoc(currentProfileDoc()),
+      8000,
+      "Firestore did not respond while loading the customer profile."
+    );
+    profile = snap.exists() ? snap.data() : {};
+  } catch (error) {
+    // Google Authentication can succeed even while Firestore is unavailable.
+    // Keep the profile form usable with Google-provided details and show a clear warning.
+    profileReadError = error;
+    console.warn("KAILU CREATION profile read failed:", error?.code || error);
+  }
   const createdAt = profile.createdAt?.toDate?.() || (currentUser.metadata?.creationTime ? new Date(currentUser.metadata.creationTime) : null);
   const createdLabel = createdAt && !Number.isNaN(createdAt.getTime()) ? createdAt.toLocaleDateString("en-IN", {day:"2-digit",month:"short",year:"numeric"}) : "Not available";
+  const profileWarning = profileReadError ? `<div class="ka-warning-card" role="status"><strong>Google sign-in succeeded, but saved profile data could not be read.</strong><p>${h(profileReadHelp(profileReadError))}</p><button type="button" class="ka-outline-button" data-ka-retry-tab>Retry loading profile</button></div>` : "";
   target.innerHTML = `
     <section class="ka-tab-pane"><div class="ka-pane-heading"><div><h2>Customer Profile</h2><p>Google supplies the email and profile photo. Add your mobile number separately.</p></div></div>
+      ${profileWarning}
       <form id="kaProfileForm" class="ka-form-grid">
         <label class="ka-field full">Full Name<input name="displayName" type="text" maxlength="120" required value="${h(profile.displayName ?? currentUser.displayName ?? "")}" autocomplete="name"></label>
         <label class="ka-field full">Email Address<input type="email" value="${h(currentUser.email || "")}" readonly aria-readonly="true"></label>
@@ -278,15 +308,25 @@ async function renderProfile(target) {
     const submit = form.querySelector('[type="submit"]');
     submit.disabled = true; submit.textContent = "Saving…";
     try {
+      const profileRef = currentProfileDoc();
+      const existingProfile = await withTimeout(
+        getDoc(profileRef),
+        8000,
+        "Firestore did not respond while checking your saved profile. Please retry."
+      );
       if (name !== (currentUser.displayName || "")) await updateProfile(currentUser, { displayName: name });
-      await setDoc(currentProfileDoc(), {
+      const profileUpdate = {
         uid: currentUser.uid,
         displayName: name,
         email: currentUser.email || "",
         photoURL: currentUser.photoURL || "",
         phoneNumber: phone,
         updatedAt: serverTimestamp()
-      }, { merge: true });
+      };
+      // Create documents need createdAt under the supplied Firestore rules;
+      // preserve the original createdAt for existing customer documents.
+      if (!existingProfile.exists()) profileUpdate.createdAt = serverTimestamp();
+      await setDoc(profileRef, profileUpdate, { merge: true });
       setStatus("Profile updated successfully.", "success");
       await fillCheckoutAddress(null, {displayName:name, phoneNumber:phone});
       renderAccountUI();

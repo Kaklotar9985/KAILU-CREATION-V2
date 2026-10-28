@@ -1,0 +1,22 @@
+KAILU CREATION™ — Login Branding & Firestore Profile Fallback Fix
+
+આ Patch માં ફક્ત નીચેની 3 website files સામેલ છે:
+- customer-account.js
+- customer-account-fallback.js
+- index.html (માત્ર customer-account.js cache version બદલેલ છે)
+
+બદલાવ:
+1. Login Panel માં “Welcome to KAILU CREATION™” બતાવે છે.
+2. My Account/Help Panel ના brand title માં ™ trademark mark ઉમેર્યું છે.
+3. Google Login સફળ થાય પરંતુ Firestore profile read નિષ્ફળ/ધીમું હોય તો Profile form Google Account ની ઉપલબ્ધ માહિતી સાથે બતાવશે; તે ખોટી રીતે “Login failed” નહીં કહે.
+4. Firestore permission/network/database સમસ્યા માટે અલગ સૂચના અને Retry ઉમેર્યું છે.
+5. નવી Profile document save કરતી વખતે createdAt ઉમેરાય છે; existing document નું createdAt જાળવાય છે.
+
+GitHub Update:
+- આ 3 files ને KAILU-CREATION-V2 repository root માં અપડેટ કરો.
+- firebase-config.js ને આ patch માંથી overwrite કરશો નહીં. Production માં તેમાં હાલના Firebase Project ના સાચા values હોવા જોઈએ.
+- V1 repository/domain ને બદલશો નહીં.
+- GitHub Pages deploy થયા પછી Ctrl+F5 કરીને પરીક્ષણ કરો.
+
+મર્યાદા:
+આ patch Frontend માં error handling અને branding સુધારે છે. Firestore request timeout નું મૂળ કારણ Firebase Console/Browser Console access વગર નિશ્ચિત કરી શકાય તેમ નથી. જો warning ફરી આવે તો F12 → Console માં મળતો મૂળ Firebase error તપાસવો અને Firestore Database/Rules તથા firebase-config.js માં projectId સરખા છે તેની ખાતરી કરવી. Security Rules ને public read/write પર સેટ ન કરશો.
