@@ -47,7 +47,7 @@ A real Chromium navigation attempt was blocked by the environment with ERR_BLOCK
 
 DEPLOYMENT
 ----------
-Publish the contents of this ZIP to the root of the GitHub Pages repository that actually serves the site. Keep the CNAME file unchanged. Then hard-refresh the live site and confirm:
+આ જૂનો performance report generic deployment instruction આપે છે. વર્તમાન Firebase Customer Account V2 package માટે `Kaklotar9985/KAILU-CREATION-V2` preview repositoryનો ઉપયોગ કરો. આ V2 packageમાં `CNAME` ઇરાદાપૂર્વક નથી; V1 `kailucreation.in` repositoryનું CNAME બદલશો નહીં. V2 પર publish કર્યા પછી hard-refresh કરીને confirm કરો:
 - the product grid appears while the summary says it is loading Excel;
 - the summary changes to “Synced from Excel” when the workbook fetch/parse succeeds;
 - a deliberately unavailable workbook results in a visible Sync Failed warning while backup products remain on screen.

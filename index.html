@@ -13,7 +13,7 @@
   <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,600;0,700;1,600;1,700&display=swap">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,600;0,700;1,600;1,700&display=swap" media="print" onload="this.media='all'">
   <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,600;0,700;1,600;1,700&display=swap"></noscript>
-  <link rel="stylesheet" href="style.css?v=kailu-performance-20261026-1">
+  <link rel="stylesheet" href="style.css?v=customer-google-login-20261028-1">
 </head>
 <body>
   <div class="announcement-bar">
@@ -32,6 +32,9 @@
       <a class="nav-link" href="#products">Shop Catalogs</a>
       <a class="nav-link" href="#why-kailu">Why KAILU</a>
     </nav>
+    <button id="accountShortcut" class="account-shortcut" type="button" aria-label="Sign in with Google">
+      <span class="account-shortcut-icon" aria-hidden="true">♙</span><span class="ka-account-button-label">Sign in</span>
+    </button>
     <button id="cartShortcut" class="cart-shortcut" type="button" aria-label="Open cart">
       <span class="cart-icon" aria-hidden="true">🛍</span> Cart <span id="cartCount" class="count">0</span>
     </button>
@@ -177,7 +180,11 @@
   <script src="pincode-serviceability.js"></script>
   <!-- Render the last-known-good catalog immediately; Excel sync updates it in the background. -->
   <script src="products-data.js?v=kailu-excel-sync-fix-20261027-1"></script>
-  <script src="script.js?v=order-verify-iframe-fallback-20261028-1"></script>
+  <script src="script.js?v=customer-account-bridge-20261028-1"></script>
   <script src="catalog-sync.js?v=excel-catalog-sync-fix-20261027-1"></script>
+  <script src="firebase-config.js?v=customer-google-login-20261028-2"></script>
+  <!-- Clear guidance if the Firebase ES module cannot run (for example, when index.html is opened as file://). -->
+  <script src="customer-account-fallback.js?v=local-module-diagnostic-20261028-1"></script>
+  <script type="module" src="customer-account.js?v=customer-google-login-20261028-2" onerror="window.__KAILU_ACCOUNT_MODULE_FAILED = true"></script>
 </body>
 </html>

@@ -4,11 +4,12 @@ const SHEET_ID = "1VAvTtSempaIT6DzJ54KADBzdRiJj-vbtiyFfzqc94xg";
 const SHEET_NAME = "Kailu Creation Orders Detail";
 const REQUEST_LEDGER_SHEET_NAME = "_KAILU_Order_Request_Log";
 
-// Updated layout: A:Q (17 columns), including the new SKU and Qty columns.
+// Order layout: A:U (21 columns), retaining legacy columns and adding verified customer/account fields.
 const HEADERS = [
   "Timestamp", "Order ID", "Customer Name", "Mobile Number", "SKU", "Items", "Size", "Qty",
   "House No. / Building", "Landmark", "Road / Area / Colony", "Pincode", "City", "State",
-  "Payment Method", "Total (INR)", "Order Status"
+  "Payment Method", "Total (INR)", "Order Status",
+  "Firebase UID", "Customer Email", "Payment Status", "Items JSON"
 ];
 
 function doGet(e) {
@@ -109,10 +110,17 @@ function setupOrdersSheet() {
   }
   ensureOrderSchema_(sheet);
   ensureRequestLedgerSheet_(ss);
-  return "Orders tab is ready with columns A:Q and request verification ledger.";
+  return "Orders tab is ready with columns A:U, customer UID/payment status fields, and request verification ledger.";
 }
 
 function doPost(e) {
+  // Authenticated, read-only customer history uses a separate postMessage response.
+  // The Firebase ID token is verified server-side before a UID is trusted.
+  const incoming = (e && e.parameter) ? e.parameter : {};
+  if (String(incoming.action || "") === "customerOrders") {
+    return customerOrdersResponsePage_(incoming);
+  }
+
   const lock = LockService.getScriptLock();
   let lockAcquired = false;
   let requestIdForVerification = "";
@@ -136,6 +144,22 @@ function doPost(e) {
     try { items = JSON.parse(p.items); }
     catch (_) { return rejectOrder_(clientRequestId, "Order items could not be read. Please refresh and try again."); }
     if (!Array.isArray(items) || !items.length) return rejectOrder_(clientRequestId, "No order items were provided.");
+
+    // Never trust a customer UID or email submitted by the browser. If a Firebase
+    // ID token is present, verify it against the existing Firebase project and use
+    // the server-returned UID/email. Guest orders remain valid but are not linked.
+    let verifiedCustomer = null;
+    const firebaseIdToken = String(p.idToken || "").trim();
+    if (firebaseIdToken) {
+      verifiedCustomer = verifyFirebaseIdToken_(firebaseIdToken);
+      if (!verifiedCustomer.ok) {
+        return rejectOrder_(clientRequestId, verifiedCustomer.message || "Google customer verification failed. Please sign in again.");
+      }
+      const claimedUid = String(p.customerUid || "").trim();
+      if (claimedUid && claimedUid !== verifiedCustomer.uid) {
+        return rejectOrder_(clientRequestId, "Customer account verification did not match. Please sign in again and retry.");
+      }
+    }
 
     // A retry with the same clientRequestId returns the original confirmed order,
     // preventing duplicate rows when the browser loses a response after saving.
@@ -172,8 +196,8 @@ function doPost(e) {
       return `${name} | SKU ${sku} | Color ${color || "-"} | Size ${size} | Qty ${quantity || "-"} | Unit ₹${Number.isFinite(unitPrice) ? unitPrice : "-"} | Line Total ₹${Number.isFinite(lineTotal) ? lineTotal : "-"}`;
     }).join("\n");
 
-    // Keep one row per order in the existing 17-column layout. Multi-product SKU,
-    // item, size and quantity details are retained as joined summaries in their columns.
+    // Keep one row per order. The original 17 columns retain their positions;
+    // verified customer identity, payment status, and structured item data are appended.
     const skuSummary = Array.from(new Set(items.map(getItemSku_).filter(Boolean))).join(", ");
     const itemQtyTotal = items.reduce((sum, item) => sum + getItemQty_(item), 0);
     const qtyValue = itemQtyTotal || Number(p.qty || p.quantity || 0) || "";
@@ -210,7 +234,11 @@ function doPost(e) {
       safeCell_(p.state),
       safeCell_(paymentMethod),
       total,
-      "New"
+      "New",
+      verifiedCustomer ? verifiedCustomer.uid : "",
+      verifiedCustomer ? verifiedCustomer.email : "",
+      "Payment Pending",
+      safeCell_(JSON.stringify(items))
     ];
 
     sheet.appendRow(row);
@@ -274,6 +302,155 @@ function doPost(e) {
   }
 }
 
+/**
+ * Verify a Firebase client ID token using the Firebase Authentication account lookup
+ * endpoint. The API key is loaded from Apps Script Script Properties; it is not a
+ * service-account secret. A returned UID is trusted only when the token is accepted
+ * by the existing Firebase project and the account has a Google provider.
+ */
+function verifyFirebaseIdToken_(idToken) {
+  const apiKey = String(PropertiesService.getScriptProperties().getProperty("FIREBASE_WEB_API_KEY") || "").trim();
+  if (!apiKey) {
+    return { ok: false, message: "Firebase Web API Key is not configured in the order backend. Please contact the store administrator." };
+  }
+  if (!idToken || idToken.length > 10000) {
+    return { ok: false, message: "Your Google sign-in session is invalid. Please sign in again." };
+  }
+  try {
+    const response = UrlFetchApp.fetch(
+      "https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=" + encodeURIComponent(apiKey),
+      {
+        method: "post",
+        contentType: "application/json",
+        payload: JSON.stringify({ idToken: idToken }),
+        muteHttpExceptions: true
+      }
+    );
+    if (response.getResponseCode() !== 200) {
+      console.warn("Firebase token lookup rejected a customer token. HTTP", response.getResponseCode());
+      return { ok: false, message: "Google sign-in verification failed or expired. Sign in again and retry." };
+    }
+    const data = JSON.parse(response.getContentText() || "{}");
+    const account = Array.isArray(data.users) ? data.users[0] : null;
+    if (!account || !account.localId || account.disabled === true) {
+      return { ok: false, message: "The customer Firebase account could not be verified." };
+    }
+    const providers = Array.isArray(account.providerUserInfo) ? account.providerUserInfo : [];
+    if (!providers.some(provider => provider && provider.providerId === "google.com")) {
+      return { ok: false, message: "KAILU customer accounts must use Google Sign-In." };
+    }
+    if (account.emailVerified !== true) {
+      return { ok: false, message: "The Google account email is not verified. Verify the Google account and sign in again." };
+    }
+    return { ok: true, uid: String(account.localId), email: String(account.email || "").trim().toLowerCase() };
+  } catch (error) {
+    console.error("Firebase ID token verification error:", error);
+    return { ok: false, message: "The order server could not verify Google sign-in because of a temporary connection or configuration issue." };
+  }
+}
+
+/** Return the signed-in customer's own orders as a sandboxed iframe postMessage. */
+function customerOrdersResponsePage_(p) {
+  const nonce = String(p.nonce || "");
+  const requestedOrigin = String(p.origin || "").trim();
+  const allowedOrigins = [
+    "https://kaklotar9985.github.io",
+    "https://kailucreation.in",
+    "https://www.kailucreation.in"
+  ];
+  if (!/^[A-Za-z0-9_-]{16,120}$/.test(nonce) || allowedOrigins.indexOf(requestedOrigin) < 0) {
+    return HtmlService.createHtmlOutput("Invalid or unauthorized customer history request.");
+  }
+  let result;
+  try {
+    const identity = verifyFirebaseIdToken_(String(p.idToken || "").trim());
+    if (!identity.ok) {
+      result = { ok: false, message: identity.message || "Google sign-in verification failed." };
+    } else {
+      result = { ok: true, orders: getCustomerOrdersByUid_(identity.uid) };
+    }
+  } catch (error) {
+    console.error("Customer order history error:", error);
+    result = { ok: false, message: "Customer order history is temporarily unavailable. Please retry." };
+  }
+  const message = { type: "KAILU_CUSTOMER_ORDERS_RESULT", nonce: nonce, result: result };
+  const messageJson = JSON.stringify(message)
+    .replace(/</g, "\\u003c")
+    .replace(/>/g, "\\u003e")
+    .replace(/&/g, "\\u0026")
+    .replace(/\u2028/g, "\\u2028")
+    .replace(/\u2029/g, "\\u2029");
+  const targetOriginJson = JSON.stringify(requestedOrigin);
+  const html = '<!doctype html><html><head><meta charset="utf-8"></head><body>' +
+    '<script>(function(){var m=' + messageJson + ',targetOrigin=' + targetOriginJson +
+    ';try{if(window.parent&&window.parent!==window){window.parent.postMessage(m,targetOrigin);}}catch(e){}})();<\/script>' +
+    '</body></html>';
+  return HtmlService.createHtmlOutput(html).setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+}
+
+/**
+ * Only rows containing the verified Firebase UID are returned. Orders before this
+ * UID column was introduced remain unlinked; email/name/mobile matching is avoided.
+ */
+function getCustomerOrdersByUid_(uid) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(15000);
+  try {
+    const ss = SpreadsheetApp.openById(SHEET_ID);
+    const sheet = ss.getSheetByName(SHEET_NAME);
+    if (!sheet || sheet.getLastRow() < 2) return [];
+    ensureOrderSchema_(sheet);
+    const lastRow = sheet.getLastRow();
+    const lastCol = Math.max(sheet.getLastColumn(), HEADERS.length);
+    const headers = sheet.getRange(1, 1, 1, lastCol).getDisplayValues()[0];
+    const headerIndexes = {};
+    headers.forEach((header, index) => { headerIndexes[normalizeHeader_(header)] = index; });
+    const uidIndex = headerIndexes[normalizeHeader_("Firebase UID")];
+    if (uidIndex === undefined) return [];
+    const rows = sheet.getRange(2, 1, lastRow - 1, lastCol).getValues();
+    const indexOf = name => headerIndexes[normalizeHeader_(name)];
+    const at = (row, name) => { const i = indexOf(name); return i === undefined ? "" : row[i]; };
+    const dateLabel = value => {
+      if (value instanceof Date && !isNaN(value.getTime())) {
+        return Utilities.formatDate(value, Session.getScriptTimeZone(), "dd MMM yyyy, hh:mm a");
+      }
+      return String(value || "Date unavailable");
+    };
+    return rows.filter(row => String(row[uidIndex] || "").trim() === uid)
+      .sort((a, b) => {
+        const aDate = at(a, "Timestamp") instanceof Date ? at(a, "Timestamp").getTime() : new Date(at(a, "Timestamp") || 0).getTime();
+        const bDate = at(b, "Timestamp") instanceof Date ? at(b, "Timestamp").getTime() : new Date(at(b, "Timestamp") || 0).getTime();
+        return bDate - aDate;
+      }).map(row => {
+      let items = [];
+      const itemsJson = String(at(row, "Items JSON") || "").trim().replace(/^'/, "");
+      if (itemsJson) {
+        try { const parsed = JSON.parse(itemsJson); if (Array.isArray(parsed)) items = parsed; } catch (_) {}
+      }
+      const paymentMethod = String(at(row, "Payment Method") || "Cash on Delivery (COD)");
+      const storedPaymentStatus = String(at(row, "Payment Status") || "").trim();
+      // Never infer payment receipt from order placement. COD defaults to pending.
+      const paymentStatus = storedPaymentStatus || (/cod|cash on delivery/i.test(paymentMethod) ? "Payment Pending" : "Payment status not confirmed");
+      return {
+        orderId: String(at(row, "Order ID") || ""),
+        orderDate: dateLabel(at(row, "Timestamp")),
+        customerName: String(at(row, "Customer Name") || ""),
+        sku: String(at(row, "SKU") || ""),
+        itemsSummary: String(at(row, "Items") || ""),
+        items: items,
+        size: String(at(row, "Size") || ""),
+        quantity: String(at(row, "Qty") || ""),
+        total: Number(at(row, "Total (INR)") || 0),
+        paymentMethod: paymentMethod,
+        orderStatus: String(at(row, "Order Status") || "New"),
+        paymentStatus: paymentStatus
+      };
+    });
+  } finally {
+    lock.releaseLock();
+  }
+}
+
 // Migrates rows by matching header names, so adding/reordering columns does not
 // shift old values into the wrong fields. Existing order history is retained.
 function ensureOrderSchema_(sheet) {
@@ -333,8 +510,8 @@ function ensureOrderSchema_(sheet) {
   sheet.getRange(1, 1, 1, HEADERS.length).setFontWeight("bold");
 }
 
-// A separate hidden sheet stores idempotency keys without changing the public
-// 17-column Orders layout. This survives CacheService eviction and lost responses.
+// A separate hidden sheet stores idempotency keys. This survives CacheService eviction
+// and lost responses without adding any more columns to the customer-facing order tab.
 function ensureRequestLedgerSheet_(ss) {
   let ledger = ss.getSheetByName(REQUEST_LEDGER_SHEET_NAME);
   if (!ledger) {

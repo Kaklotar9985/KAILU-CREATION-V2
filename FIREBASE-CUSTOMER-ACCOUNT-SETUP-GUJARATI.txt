@@ -1,0 +1,117 @@
+KAILU CREATION V2 — Firebase Google Login + Customer Account Setup
+===============================================================
+
+મહત્વપૂર્ણ સ્થિતિ
+-----------------
+
+ખાસ — Sign in panel ન ખૂલે તો પહેલાં આ તપાસો
+----------------------------------------
+- index.html ને સીધું double-click કરીને ખોલશો નહીં. Browser address માં file:/// દેખાય તો Firebase ES module CORS/security ના કારણે load ન થઈ શકે.
+- Extract કરેલી KAILU-CREATION-V2-main folder માં START-LOCAL-TEST.bat double-click કરો. તે local HTTP server શરૂ કરીને http://127.0.0.1:8765/ ખોલશે.
+- Firebase Console → Authentication → Settings → Authorized domains માં local test માટે 127.0.0.1 ઉમેરવાની જરૂર પડી શકે છે. નવા Firebase projects માં localhost default authorized ન પણ હોય શકે.
+- આટલું કર્યા પછી પણ Google Login સક્રિય કરવા firebase-config.js માં હાલના KAILU CREATION Project ની વાસ્તવિક Web App configuration ભરો.
+
+આ ZIP માં Customer Account નો કોડ તૈયાર છે, પરંતુ Firebase Web App Configuration હજુ
+placeholder છે. Firebase Console ની તમારી વાસ્તવિક Configuration ભરીને અને Google Apps
+Script ને update/redeploy કર્યા પછી જ તેને live વાપરી શકાય. આ ZIP પોતે Firebase Console
+અથવા Live Website પર કોઈ ફેરફાર કરતી નથી.
+
+1. Firebase Web App Configuration
+---------------------------------
+1) હાલના KAILU CREATION Firebase project માં જ રહો; નવો project બનાવશો નહીં.
+2) Firebase Console → Project settings → General → Your apps ખોલો.
+3) Website માટે ઉપયોગમાં લેવાતી હાલની Web App પસંદ કરો અને SDK setup/configuration માંથી
+   firebaseConfig object લો.
+4) ZIP ની firebase-config.js માં નીચેના values વાસ્તવિક valuesથી બદલો:
+   apiKey, authDomain, projectId, storageBucket, messagingSenderId, appId.
+   Project ID અથવા appId અંદાજથી ન લખો; Console માંથી copy કરો.
+5) firebase-config.js client-side file છે. તેમાં Service Account JSON, Admin private key,
+   OAuth client secret અથવા અન્ય server-side secret ક્યારેય ન મૂકશો.
+
+2. Google Authentication અને Authorized Domains
+----------------------------------------------
+Firebase Console → Authentication:
+- Sign-in method / Providers માં Google provider enable કરો.
+- Email/Password provider enable કરવાની જરૂર નથી; આ implementation માં તે વપરાતો નથી.
+- Authentication → Settings → Authorized domains માં, જે domains વાસ્તવમાં વાપરો તે ઉમેરો:
+  kaklotar9985.github.io
+  kailucreation.in
+  www.kailucreation.in
+- Firebase project માં દેખાતો existing default auth domain પણ configuration માંથી જ વાપરો.
+- Domain value માં https://, path અથવા trailing slash ન લખો.
+
+3. Firestore Rules
+------------------
+1) ZIP ની firestore.rules ફાઇલ તપાસો.
+2) Firebase Console → Firestore Database → Rules માં હાલના rules વાંચો.
+3) જો Firestore માં અન્ય live feature/data વપરાય છે તો તેને delete/overwrite ન કરો; હાલના rules
+   સાથે users/{uid} અને તેની addresses તથા wishlist subcollections ના rules merge કરો.
+4) Rules publish કરો.
+5) Data paths:
+   users/{firebaseUid}
+   users/{firebaseUid}/addresses/{addressId}
+   users/{firebaseUid}/wishlist/{productId}
+6) દરેક customer profile/address/wishlist path ફક્ત એ UID વાળા signed-in customer માટે છે.
+   Customer browser માં UID બદલીને બીજા account નો data વાંચી/લખી ન શકે તે Rules અટકાવે છે.
+
+4. Existing Google Apps Script + Google Sheets Order System
+-----------------------------------------------------------
+1) ZIP ની updated Code.gs ફાઇલને હાલના deployed Order Google Apps Script project માં મૂકો.
+   નવો spreadsheet અથવા નવો order backend બનાવશો નહીં.
+2) Apps Script → Project Settings → Script Properties માં property ઉમેરો:
+   Property: FIREBASE_WEB_API_KEY
+   Value: firebase-config.js માં વપરાતી એ જ Firebase Web API Key.
+   આ Web API Key public client config છે; Service Account private key નથી.
+3) Apps Script editor માં setupOrdersSheet() એક વખત ચલાવો અને જરૂરી authorization આપો.
+   આ હાલના order sheet ના જૂના columns A:Q રાખીને નવા columns ઉમેરશે:
+   R Firebase UID
+   S Customer Email
+   T Payment Status
+   U Items JSON
+   Existing values header names પ્રમાણે migrate થાય છે. પહેલાં Sheet backup રાખવો.
+4) Deploy → Manage deployments → હાલની Web App deployment → Edit → New version → Deploy.
+   Existing deployment permissions, endpoint URL અને owner/run-as settings ચકાસો; website માં
+   GOOGLE_SCRIPT_URL બદલવાની જરૂર ન હોવી જોઈએ.
+5) જો Apps Script ને UrlFetchApp authorization જોઈએ તો project owner તરીકે authorization પૂર્ણ કરો.
+6) નવા logged-in orders માટે backend ID token verify કરે છે; client થી મોકલેલા UID/email ને
+   વિશ્વાસ કરતું નથી. Guest orders પહેલાની જેમ આવી શકે, પણ Firebase UID વગર તેઓ Account માં
+   દેખાશે નહીં.
+
+5. Order History અને legacy orders
+----------------------------------
+- માત્ર Firebase દ્વારા server-side verify થયેલા UID સાથેના Orders જ પાછા મોકલાય છે.
+- જૂના rows માં Firebase UID નથી, એટલે તેમને email/name/mobile પરથી આપમેળે કોઈ customer સાથે
+  link કરાતા નથી. આથી ખોટા customer ને order બતાવવાનું જોખમ ટળે છે.
+- Old orders ને link કરવા માટે administratorએ customer identity અને order ownership અલગથી
+  વિશ્વસનીય રીતે ચકાસીને sheet માં Firebase UID manually/migration દ્વારા જ ઉમેરવો જોઈએ.
+- Order Status અને Payment Status અલગ columns છે. નવા COD orders “New” અને “Payment Pending”
+  તરીકે આવે છે. COD Order Place થવાથી “Payment Received” ક્યારેય આપમેળે થતું નથી.
+- Cancel/Return/Exchange હાલ dedicated backend workflow નથી; Account માંથી store WhatsApp પર
+  request માટે સંપર્ક કરી શકાય છે. Track Order ફક્ત Sheet માં રહેલો status બતાવે છે, live courier
+  tracking નથી. Product rating/review submit flow પણ verified-delivery backend વગર સક્રિય નથી.
+
+6. Publish website safely
+-------------------------
+- index.html, style.css, script.js, firebase-config.js, customer-account.js,
+  firestore.rules અને Code.gs તપાસ્યા પછી Website V2 repository માં commit કરો.
+- Existing catalog-sync.js, products-data.js અને pincode-serviceability.js ના data/logic ને બદલો નહીં.
+- github.io અને custom domain બંને HTTPS domains થી test કરો.
+- V1/live production site પર આ ZIP upload ન કરો; પહેલાં V2 preview પર તપાસો.
+
+7. Test checklist
+-----------------
+[ ] Google provider enabled, each production hostname is authorized.
+[ ] First Google sign-in creates users/{uid}; returning sign-in reuses the same UID.
+[ ] Cancelled popup shows an informational message, not a false login error.
+[ ] Refresh retains auth state; logout removes signed-in state.
+[ ] Name/mobile save; email is read-only and comes from Firebase Authentication.
+[ ] Address add/edit/delete/default and PIN lookup.
+[ ] Wishlist add/remove/view.
+[ ] New signed-in order row includes server-verified Firebase UID, email, Payment Pending, Items JSON.
+[ ] Customer A cannot read customer B profile/address/wishlist; order history filters by verified UID.
+[ ] Existing guest checkout, catalog sync, cart, Buy Now, order verification and success popup remain working.
+[ ] PC and mobile browsers; both github.io and custom domain.
+
+Actual Firebase/Apps Script console configuration and live end-to-end checks must be completed by
+someone with access to the Firebase project and Apps Script deployment. Do not consider a test passed
+until the relevant Firebase Console / website / Sheet result is observed.

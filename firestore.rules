@@ -1,0 +1,107 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+    function isOwner(userId) {
+      return signedIn() && request.auth.uid == userId;
+    }
+    function validPhone(value) {
+      return value is string && (value == '' || value.matches('^[6-9][0-9]{9}$'));
+    }
+
+    // Every customer record is stored beneath the authenticated Firebase UID.
+    match /users/{userId} {
+      allow read: if isOwner(userId);
+      allow create: if isOwner(userId)
+        && request.resource.data.keys().hasOnly([
+          'uid', 'displayName', 'email', 'photoURL', 'phoneNumber', 'createdAt', 'updatedAt'
+        ])
+        && request.resource.data.uid == userId
+        && request.resource.data.email == request.auth.token.email
+        && request.resource.data.displayName is string
+        && request.resource.data.displayName.size() <= 120
+        && request.resource.data.photoURL is string
+        && validPhone(request.resource.data.phoneNumber)
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time;
+      allow update: if isOwner(userId)
+        && request.resource.data.uid == resource.data.uid
+        && request.resource.data.email == resource.data.email
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'displayName', 'phoneNumber', 'photoURL', 'updatedAt'
+        ])
+        && request.resource.data.displayName is string
+        && request.resource.data.displayName.size() <= 120
+        && request.resource.data.photoURL is string
+        && validPhone(request.resource.data.phoneNumber)
+        && request.resource.data.updatedAt == request.time;
+      allow delete: if false;
+
+      match /addresses/{addressId} {
+        function validAddress(data) {
+          return data.keys().hasOnly([
+              'fullName', 'mobileNumber', 'houseBuilding', 'landmark', 'roadArea',
+              'pincode', 'city', 'state', 'isDefault', 'createdAt', 'updatedAt'
+            ])
+            && data.keys().hasAll([
+              'fullName', 'mobileNumber', 'houseBuilding', 'landmark', 'roadArea',
+              'pincode', 'city', 'state', 'isDefault', 'createdAt', 'updatedAt'
+            ])
+            && data.fullName is string && data.fullName.size() >= 2 && data.fullName.size() <= 120
+            && data.mobileNumber is string && data.mobileNumber.matches('^[6-9][0-9]{9}$')
+            && data.houseBuilding is string && data.houseBuilding.size() > 0 && data.houseBuilding.size() <= 180
+            && data.landmark is string && data.landmark.size() <= 180
+            && data.roadArea is string && data.roadArea.size() > 0 && data.roadArea.size() <= 180
+            && data.pincode is string && data.pincode.matches('^[0-9]{6}$')
+            && data.city is string && data.city.size() > 0 && data.city.size() <= 100
+            && data.state is string && data.state.size() > 0 && data.state.size() <= 100
+            && data.isDefault is bool;
+        }
+        allow read: if isOwner(userId);
+        allow create: if isOwner(userId)
+          && validAddress(request.resource.data)
+          && request.resource.data.createdAt == request.time
+          && request.resource.data.updatedAt == request.time;
+        allow update: if isOwner(userId)
+          && validAddress(request.resource.data)
+          && request.resource.data.createdAt == resource.data.createdAt
+          && request.resource.data.updatedAt == request.time;
+        allow delete: if isOwner(userId);
+      }
+
+      match /wishlist/{itemId} {
+        function validWishlistItem(data) {
+          return data.keys().hasOnly([
+              'productId', 'name', 'category', 'sku', 'imageUrl', 'imageFallback',
+              'price', 'createdAt', 'updatedAt'
+            ])
+            && data.keys().hasAll([
+              'productId', 'name', 'category', 'sku', 'imageUrl', 'imageFallback',
+              'price', 'createdAt', 'updatedAt'
+            ])
+            && data.productId is string && data.productId.size() > 0 && data.productId.size() <= 180
+            && data.name is string && data.name.size() > 0 && data.name.size() <= 180
+            && data.category is string && data.category.size() <= 100
+            && data.sku is string && data.sku.size() <= 180
+            && data.imageUrl is string && data.imageUrl.size() <= 2048
+            && data.imageFallback is string && data.imageFallback.size() <= 2048
+            && data.price is number && data.price >= 0;
+        }
+        allow read: if isOwner(userId);
+        allow create: if isOwner(userId)
+          && validWishlistItem(request.resource.data)
+          && request.resource.data.createdAt == request.time
+          && request.resource.data.updatedAt == request.time;
+        allow update: if isOwner(userId)
+          && validWishlistItem(request.resource.data)
+          && request.resource.data.createdAt == resource.data.createdAt
+          && request.resource.data.updatedAt == request.time;
+        allow delete: if isOwner(userId);
+      }
+    }
+
+    // Anything not explicitly listed above is denied by default.
+  }
+}

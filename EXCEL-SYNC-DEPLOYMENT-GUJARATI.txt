@@ -1,30 +1,30 @@
 KAILU CREATION — Excel Catalog Sync Fix
 =======================================
 
-મૂળ કારણ
----------
-આપેલી ZIPમાં catalog-sync.js હતો, પણ GitHub પર તપાસેલી હાલની KAILU-CREATION-V2/index.html હજી products-data.js પછી script.js સીધું load કરે છે અને catalog-sync.js ચલાવતું નથી. ઉપરાંત kailucreation.in માટેનું CNAME KAILU-CREATION repositoryમાં છે, જ્યારે તે repositoryની visible file listમાં Excel workbook/catalog-sync.js નહોતાં. એટલે ZIPનો Sync Code Live Domain પર publish ન થયો હતો.
+જૂના buildનું કારણ અને વર્તમાન V2 સ્થિતિ
+----------------------------------------
+જૂના buildમાં Excel Sync source/deployment વચ્ચે mismatch હતો. વર્તમાન V2 packageમાં `index.html` પહેલાં bundled `products-data.js` snapshot, પછી `script.js` દ્વારા initial render, અને ત્યારબાદ `catalog-sync.js` દ્વારા Excel fetch/sync load કરે છે. આ ક્રમ initial catalog render જાળવે છે અને Excel sync ને અલગથી ચલાવે છે. `kailucreation.in` V1 domain છે; આ ZIP V2 preview માટે છે.
 
 આ પેકેજમાં શું છે
 -----------------
 1. catalog-sync.js — Websiteના જ rootમાં રહેલી `Kailu Creation Catalog List.xlsx` નો fetch અને 20-column validation.
-2. index.html — cache-version બદલ્યું છે; products-data.js backup તરીકે પહેલાં load થાય છે, પછી catalog-sync.js Excel fetch/parse કરે છે અને ત્યારબાદ જ script.js load થાય છે.
+2. index.html — અલગ cache versions સાથે `products-data.js`, `script.js`, `catalog-sync.js`, Firebase config અને customer-account module load કરે છે. Catalog script શરૂઆતનું product render અટકાવતું નથી; તે Excel sync backgroundમાં શરૂ કરે છે.
 3. script.js — Excel Sync સફળ હોય ત્યારે `Synced from Excel`; નિષ્ફળ જાય તો `Sync Failed — Showing Last Synced Data` અથવા `Sync Failed — Showing Backup Data` દેખાડે છે.
-4. CNAME — kailucreation.in custom domain જાળવવા માટે.
-5. .nojekyll — GitHub Pagesને underscore/hidden pathsને Jekyll દ્વારા process ન કરવા માટે.
+4. `.nojekyll` — GitHub Pages પર static files માટે.
+5. આ V2 preview packageમાં `CNAME` નથી, જેથી V1ના `kailucreation.in` domainમાં અનિચ્છિત ફેરફાર ન થાય.
 
-Live Website અપડેટ કરવાના પગલાં
--------------------------------
-1. GitHubમાં `Kaklotar9985/KAILU-CREATION` repository ખોલો. આ જ repositoryમાં `CNAME` ફાઇલ `kailucreation.in` દર્શાવે છે.
-2. ZIP Extract કરો. ZIPની અંદરના `index.html`, `catalog-sync.js`, `script.js`, `products-data.js`, `Kailu Creation Catalog List.xlsx`, `style.css`, `pincode-serviceability.js`, `images/`, `videos/` અને `data/` ફાઇલો/ફોલ્ડર્સ repositoryના rootમાં Upload/Replace કરો; તેમને વધારાના subfolderની અંદર ન મૂકો.
-3. `CNAME` ફાઇલને rootમાં `kailucreation.in` text સાથે જાળવો. Packageમાં આ ફાઇલ છે.
-4. GitHubમાં Commit changes કરો અને Pages deploy થવા દો.
-5. Live site ખોલી Hard Refresh કરો. Product Summaryમાં `Synced from Excel` દેખાવું જોઈએ. Tooltip/titleમાં sync time અને workbook URL જોવા માટે Product Summary ઉપર hover કરો (desktop).
-6. નવા Products/Variants બતાવવા માટે Excelમાં ફેરફાર કરી તેને ફરીથી આ જ repositoryના rootમાં, એ જ નામ `Kailu Creation Catalog List.xlsx`થી Upload/Replace અને Commit કરો. Website પછીના Page Load/Refresh પર નવો workbook વાંચશે.
+V2 Preview Website અપડેટ કરવાના પગલાં
+-------------------------------------
+1. GitHubમાં `Kaklotar9985/KAILU-CREATION-V2` repository ખોલો.
+2. આ ZIPમાંથી `KAILU-CREATION-V2-main` folderની website files repositoryના rootમાં upload/replace કરો; તેમને વધારાના subfolderની અંદર ન મૂકો.
+3. V2 repositoryમાં `CNAME` હોય અને તે `kailucreation.in` બતાવતું હોય તો તેને V2 repoમાંથી દૂર કરો/તે custom domain set ન કરો. V1ની `KAILU-CREATION` repositoryમાં રહેલું `CNAME` **બદલશો કે delete કરશો નહીં**.
+4. GitHubમાં commit કરો અને `https://kaklotar9985.github.io/KAILU-CREATION-V2/` ખોલીને preview ચકાસો.
+5. Product Summaryમાં `Synced from Excel` દેખાવું જોઈએ. નવી Excel publish કરવા એ જ V2 repositoryના rootમાં `Kailu Creation Catalog List.xlsx` ને replace અને commit કરો.
+6. V1ના `kailucreation.in` પર deploy ફક્ત અલગથી ઇરાદાપૂર્વક production migration નક્કી કર્યા પછી જ કરવું.
 
 મહત્વપૂર્ણ
 ----------
-- Computerમાં local Excel save કરવાથી GitHub Pages પરની ફાઇલ આપમેળે બદલાતી નથી. Excelને GitHub/hosting પર Upload અને Commit કરવી પડે છે. આ package browser-side sync કરે છે; તે તમારી તરફથી GitHubમાં files upload/commit કરતું નથી.
+- Computerમાં local Excel save કરવાથી GitHub Pages પરની ફાઇલ આપમેળે બદલાતી નથી. Excelને GitHub/hosting પર Upload અને Commit કરવી પડે છે. આ package browser-side sync કરે છે; તે તમારી તરફથી GitHubમાં files upload/commit કરતું નથી. આ Customer Account update માટે V2 preview repositoryનો જ ઉપયોગ કરો; V1 live domainને અસ્પર્શિત રાખો.
 - Excelની 20 headers names (spaces/punctuation સિવાય) અને `Kailu Creation Catalog List` sheet જાળવો.
 - એક જ catalogના size variant rowsમાં Category, Product Name, Color, tag, Fabric, Description અને Image/Video Links consistent રાખો. Inconsistency/duplicate SKU થાય તો sync સ્પષ્ટ error સાથે reject થશે અને છેલ્લી સારી data snapshot જાળવાશે; તે જૂના dataને `Synced from Excel` તરીકે દર્શાવશે નહીં.
 - Excel CDN/Fetch નિષ્ફળ જાય તો status warning દેખાશે; last-synced browser cache અથવા bundled backup data વપરાઈ શકે.
@@ -32,7 +32,7 @@ Live Website અપડેટ કરવાના પગલાં
 
 Test Notes
 ----------
-આ packageની JavaScript syntax, actual XLSX header/data mapping અને controlled browser regression tests અલગથી ચકાસવામાં આવ્યા છે. Live GitHub Pages પર commit/publish, real customer order અને live Google Sheet write આ environmentમાંથી કરવામાં આવ્યા નથી.
+Excel Sync માટેના અગાઉના package checks આ દસ્તાવેજનો ઇતિહાસ છે. આ ZIPમાં નવા Firebase Customer Account માટે માત્ર static syntax/integrity checks ચલાવવામાં આવ્યા છે; Google Sign-In, Firestore Rules અને live customer order tests બાકી છે. તેની સાચી સ્થિતિ `CUSTOMER-ACCOUNT-TEST-REPORT-GUJARATI.txt`માં જુઓ. Live GitHub Pages commit/publish અથવા live Google Sheet write આ environmentમાંથી કરવામાં આવ્યા નથી.
 
 
 PC પર GitHubમાં અપલોડ કરતાં પહેલાં Local Testing

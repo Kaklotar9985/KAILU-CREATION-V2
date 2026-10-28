@@ -14,7 +14,7 @@ KAILU CREATION Website — Updated Package
 7. દરેક Catalog માટે Share / Copy Link; linkમાં catalog ID હોવાથી refresh પછી એ જ catalog ખુલે છે.
 8. Add to Cart અલગ છે; Buy Now selected SKU/size સાથે checkout ખોલે છે. Stock પ્રમાણે size/quantity મર્યાદિત છે.
 9. Indian mobile અને PIN-code validation; હાજર PIN data પરથી City/State auto-fill, unknown PIN માટે manual entry.
-10. Order payload એક Order ID હેઠળ એક rowમાં રહે છે; અનેક products માટે SKU, Item, Size અને Qty summary જળવાય છે. Google Sheetના હાલના A:Q, 17 headersમાં Order Status છેલ્લે રહે છે.
+10. Order payload એક Order ID હેઠળ એક rowમાં રહે છે; અનેક products માટે SKU, Item, Size અને Qty summary જળવાય છે. Google Sheetના મૂળ A:Q, 17 columns એ જ ક્રમમાં રહે છે; Customer UID, verified email, Payment Status અને Items JSON માટે R:U columns ઉમેરાય છે.
 11. Order submit પછી JSONP verificationથી server-side saved-order confirmation આવે ત્યારે જ Success Popup દેખાય છે. Duplicate request ID પર duplicate row ઉમેરાતી અટકે છે.
 
 અત્યંત મહત્વનું — Live Order System ચાલુ કરવા પહેલાં
@@ -22,9 +22,9 @@ KAILU CREATION Website — Updated Package
 ZIP માં Code.gs સુધારેલ છે, પરંતુ આ ZIP બનાવવાથી તમારી Google Apps Script deployment આપમેળે બદલાતી નથી.
 
 1. Google Apps Script project ખોલો જે નીચેના Web App URL સાથે જોડાયેલ છે:
-   https://script.google.com/macros/s/AKfycbzoDLyc2YwBgl_KnTio5LVKdZQ-GsLTvKQWMi1Uhg4zodfSt2sWtSn0a2SzO8RjCcbyHw/exec
+   https://script.google.com/macros/s/AKfycbw2zrWdILyGqxzopd3LHeiU6crc1JmPeM22xk7JBHpzRpLzy6ET4NTyJbFzmEOX-2b4Tg/exec
 2. Projectમાં source file `data/Kailu Creation Orders Detail_Apps Script_Code.gs` નો code મૂકો અને Save કરો.
-3. `setupOrdersSheet()` function એક વાર Run કરો અને permissions માંગે તો મંજૂરી આપો. તે existing tabને 17 headers સાથે તૈયાર/મૅપ કરે છે; જૂના records header names પરથી જાળવવાનો પ્રયત્ન કરે છે.
+3. `setupOrdersSheet()` function એક વાર Run કરો અને permissions માંગે તો મંજૂરી આપો. તે existing tabને 21 headers સાથે તૈયાર/મૅપ કરે છે; જૂના records header names પરથી જાળવવાનો પ્રયત્ન કરે છે.
 4. Deploy → Manage deployments → Edit → New version → Deploy કરો. ખાતરી કરો કે Web App access તમારી websiteના ગ્રાહકો માટે ઉપલબ્ધ હોય અને URL `script.js` માં રહેલા URL સાથે મેળ ખાય.
 5. પહેલાં એક મંજૂર test order વડે Google Sheetમાં row ચકાસો. પછી invalid mobile/pincode અથવા backend error વડે failure case ચકાસો. Success popup ફક્ત saved-order verification સફળ થાય ત્યારે આવવો જોઈએ.
 
@@ -67,12 +67,11 @@ Excel Data Rules:
 - products-data.js હવે live source નથી; તે માત્ર first-load/sync-failure backup snapshot તરીકે રહે છે.
 
 ============================================================
-IMPORTANT DEPLOYMENT FIX (2026-10-26)
+IMPORTANT — V1 LIVE DOMAIN SAFETY (2026-10-28)
 ============================================================
-આ ZIPમાં `CNAME` અને `.nojekyll` ઉમેર્યાં છે. Public GitHub repository તપાસમાં kailucreation.inનું CNAME `KAILU-CREATION` repositoryમાં છે; ત્યાંની file listingમાં પહેલાં `catalog-sync.js` અને Excel workbook નહોતાં. તેથી sync code વાળી ZIP ફક્ત local extract કરવાથી અથવા `KAILU-CREATION-V2`માં જ મૂકવાથી kailucreation.inની current deployment બદલાતી ન હતી.
+kailucreation.in હાલ V1ની live website છે અને આ package KAILU-CREATION-V2 preview માટે છે. તેથી આ V2 packageમાં `CNAME` file ઇરાદાપૂર્વક સામેલ નથી. આ ZIPને `KAILU-CREATION-V2` repositoryમાં publish કરો અને preview માટે `https://kaklotar9985.github.io/KAILU-CREATION-V2/` જ વાપરો.
 
-સંપૂર્ણ deployment checklist માટે `EXCEL-SYNC-DEPLOYMENT-GUJARATI.txt` વાંચો. ZIPની અંદરની website filesને domain-owning `KAILU-CREATION` repositoryના rootમાં publish કરો અને CNAME `kailucreation.in` જાળવો.
-
+આ ZIPને V1ની domain-owning `KAILU-CREATION` repository પર publish ન કરો. `kailucreation.in` માટેનું CNAME V1 repositoryમાં જાળવો. આ packageથી live domain અથવા Firebase Console આપમેળે બદલાતાં નથી.
 
 LOCAL PC TEST — READ THIS FIRST (FIXED)
 ======================================
@@ -119,3 +118,10 @@ Deployment નોંધ:
 Additional local static-server checks (2026-10-26):
 - Local HTTP server returned 200 for `/`, `style.css`, `script.js`, `catalog-sync.js`, `products-data.js`, the Excel workbook, one original product photo, its optimized thumbnail, the optimized hero image and the optimized logo.
 - These are local static-file request results (roughly 1–4 ms per request in this test environment); they are not a measure of public GitHub Pages load time or user-network performance.
+
+
+============================================================
+CUSTOMER ACCOUNT — FIREBASE GOOGLE LOGIN (ADDED 2026-10-28)
+============================================================
+
+Customer Account માટે `FIREBASE-CUSTOMER-ACCOUNT-SETUP-GUJARATI.txt` અને static validation માટે `CUSTOMER-ACCOUNT-TEST-REPORT-GUJARATI.txt` વાંચો. `firebase-config.js`માં હાલ placeholder values છે; Firebase Console માંથી હાલની KAILU CREATION Web App config paste કર્યા વિના Google Login કામ નહીં કરે. `firestore.rules` ને હાલના live rules સાથે merge/publish કરવું અને આ જ Apps Script endpoint પર updated Code.gs deploy કરવું જરૂરી છે. ZIP પોતે Firebase Console, Google Sheets અથવા live website deploy કરતું નથી.

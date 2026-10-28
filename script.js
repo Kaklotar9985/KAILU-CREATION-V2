@@ -4,7 +4,8 @@
  * The validated workbook replaces this snapshot without a page reload.
  * Keep the current Apps Script order contract and pincode data source intact.
  */
-const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxPsHY0RqbTyBaTmi95OtzDJiFJPnPt72KBXOOyRvyxR-JPkanX3ivqNa8wP4wjaawWbQ/exec";
+const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbw2zrWdILyGqxzopd3LHeiU6crc1JmPeM22xk7JBHpzRpLzy6ET4NTyJbFzmEOX-2b4Tg/exec";
+window.KAILU_GOOGLE_SCRIPT_URL = GOOGLE_SCRIPT_URL;
 const CURRENCY = "INR";
 const PINCODE_DATA = window.KAILU_PINCODE_DATA || Object.create(null);
 const SIZE_ORDER = ["S", "M", "L", "XL", "XXL", "3XL"];
@@ -1176,6 +1177,30 @@ async function submitOrder() {
     showOrderError("The Google Sheets order endpoint is not configured. Please contact the store."); return;
   }
 
+  // If the customer is signed in with Google, attach a Firebase ID token so
+  // Apps Script can verify the UID before associating this order with an account.
+  // Guest checkout remains available and is never mapped to a customer by email alone.
+  const customerSession = window.KAILU_CUSTOMER_ACCOUNT?.getSession?.() || null;
+  let verifiedCustomerFields = {};
+  if (customerSession?.configured && customerSession.ready === false) {
+    showOrderError("Customer sign-in is still loading. Please try placing the order again in a moment.");
+    return;
+  }
+  if (customerSession?.user) {
+    try {
+      const idToken = await customerSession.user.getIdToken();
+      verifiedCustomerFields = {
+        idToken,
+        customerUid: customerSession.user.uid,
+        customerEmail: customerSession.user.email || ""
+      };
+    } catch (tokenError) {
+      console.warn("[KAILU Order] Could not retrieve the Firebase ID token:", tokenError);
+      showOrderError("Your Google sign-in session could not be verified. Please sign in again before placing this order.");
+      return;
+    }
+  }
+
   const total = entries.reduce((sum, item) => sum + Number(item.variant.price) * item.quantity, 0);
   const items = entries.map(({ product, variant, quantity, lineTotal }) => ({
     sku: variant.sku, productName: product.name, name: product.name, color: product.color || "",
@@ -1192,7 +1217,8 @@ async function submitOrder() {
     qty: String(totalQty), houseBuilding: $("#houseBuilding").value.trim(),
     landmark: $("#landmark").value.trim(), roadArea: $("#roadArea").value.trim(),
     pincode, city, state, paymentMethod: "Cash on Delivery (COD)", currency: CURRENCY,
-    total: String(total), items: JSON.stringify(items)
+    total: String(total), items: JSON.stringify(items),
+    ...verifiedCustomerFields
   });
 
   const submitButton = $("#whatsappOrder");
@@ -1560,3 +1586,25 @@ if (pendingClientOrderId) {
     }
   }, 500);
 }
+
+// Small public bridges used by the separate customer-account module.
+// These close over the existing catalogue/cart implementation and avoid duplicating it.
+window.KAILU_OPEN_CATALOG = function (productId) {
+  if (productById.has(String(productId))) openProductDetail(String(productId));
+  else showToast("This catalog is not available in the current product list.");
+};
+window.KAILU_REORDER_ITEMS = function (items) {
+  let addedCount = 0;
+  (Array.isArray(items) ? items : []).forEach(item => {
+    const match = variantBySku.get(String(item?.sku || ""));
+    if (!match || !isInStock(match.variant)) return;
+    const requested = Math.max(1, Number(item.quantity ?? item.qty ?? 1) || 1);
+    const quantity = Math.min(requested, stockQuantity(match.variant));
+    addToCart(match.product, match.variant, quantity);
+    addedCount += 1;
+  });
+  if (addedCount) openCart({ checkout: false });
+  return addedCount > 0;
+};
+window.KAILU_SHOW_TOAST = showToast;
+

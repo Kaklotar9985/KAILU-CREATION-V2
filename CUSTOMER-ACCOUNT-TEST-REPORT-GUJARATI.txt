@@ -1,0 +1,40 @@
+KAILU CREATION V2 — CUSTOMER ACCOUNT STATIC TEST REPORT
+======================================================
+Date: 28 October 2026
+Package: KAILU-CREATION-V2-FIREBASE-CUSTOMER-ACCOUNT.zip
+
+STATIC CHECKS RUN HERE
+----------------------
+PASS — JavaScript syntax parse: script.js.
+PASS — JavaScript module syntax parse: customer-account.js.
+PASS — JavaScript syntax parse: firebase-config.js.
+PASS — Google Apps Script source parse with Node syntax checker: Code.gs.
+PASS — Existing Excel catalog sync file is byte-for-byte unchanged: catalog-sync.js.
+PASS — Existing bundled product snapshot is byte-for-byte unchanged: products-data.js.
+PASS — Existing PIN-code/serviceability data is byte-for-byte unchanged: pincode-serviceability.js.
+PASS — No duplicate HTML id values found in index.html.
+PASS — No email/password sign-in, email/password account creation, EmailAuthProvider, or password-reset SDK call found in the new account module/config/rules.
+PASS — No Meta Pixel/fbq tracker was added to the edited HTML/JavaScript/Apps Script files.
+PASS — The new order backend derives the account UID/email from Firebase token verification; it does not trust submitted customerUid/customerEmail values.
+PASS — Order history queries only rows whose Firebase UID exactly matches the verified UID. Orders without that UID are not linked automatically.
+PASS — New order rows default Payment Status to “Payment Pending”; order placement never labels COD as paid.
+
+NOT RUN / REQUIRES OWNER CONFIGURATION OR LIVE TEST
+--------------------------------------------------
+NOT RUN — Real Google sign-in or first-time Firebase user creation. firebase-config.js still contains placeholders because the screenshot shows the Firebase project overview, not the actual Web App config object.
+NOT RUN — Firestore profile/address/wishlist writes and deployed Rules enforcement. The rules file must be merged with existing production rules and published in the Firebase Console.
+NOT RUN — Apps Script token verification, Sheet migration, order-history iframe response, or logged-in order saving. Code.gs must be copied into the current Apps Script project; Script Property FIREBASE_WEB_API_KEY must be added; setupOrdersSheet() must be run; then the existing Web App deployment must be redeployed.
+NOT RUN — Real desktop/mobile, popup cancel, network outage, live domain and guest/order regression tests. External Firebase CDN/network access and authenticated account credentials are not available in this execution environment.
+NOT RUN — Review submission, courier tracking, cancellation, returns and exchanges. These require an authorised backend process/current logistics data; the account UI does not falsely claim those actions completed. Cancellation/return/exchange currently opens the store's WhatsApp contact for review by staff.
+
+IMPORTANT
+---------
+Syntax/static checks passing does not mean Google Login is live. Do not publish this ZIP over the live V1 domain. First fill firebase-config.js from the existing Firebase Web App, configure Google provider and authorized domains, merge/publish Firestore rules, update Script Properties and redeploy the existing Apps Script Web App, then follow the checklist in FIREBASE-CUSTOMER-ACCOUNT-SETUP-GUJARATI.txt. Keep a backup of the Google Sheet before running setupOrdersSheet().
+
+
+Sign-in panel diagnostic fix (2026-10-28)
+----------------------------------------
+- Added customer-account-fallback.js. If the Firebase ES module does not load, clicking Sign in now shows a helpful diagnostic panel instead of doing nothing.
+- The page detects file:// and tells the user to run START-LOCAL-TEST.bat.
+- This is a diagnostic fallback, not a claim that Firebase sign-in succeeds in file:// mode. Real Google sign-in still requires the correct firebase-config.js, an http(s) origin, Google provider enabled, and authorized domain.
+- Automated code-level checks only; Firebase popup and real account sign-in have not been live-tested in the user's browser/project.

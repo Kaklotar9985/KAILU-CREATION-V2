@@ -2,7 +2,7 @@
 setlocal
 cd /d "%~dp0"
 
-echo KAILU CREATION - Local Excel Sync Test
+echo KAILU CREATION V2 - Start Local Website (Customer Login Test)
 if not exist "Kailu Creation Catalog List.xlsx" (
   echo.
   echo ERROR: Kailu Creation Catalog List.xlsx is missing from this folder.
@@ -24,7 +24,7 @@ if not errorlevel 1 (
 echo.
 echo Python is not installed or not available in PATH.
 echo Install Python, or open this folder in VS Code and use Live Server.
-echo Excel sync will NOT work reliably by double-clicking index.html.
+echo Firebase ES modules and Excel sync will NOT work reliably by double-clicking index.html.
 echo.
 pause
 exit /b 1
@@ -34,6 +34,8 @@ timeout /t 2 /nobreak >nul
 start "" "http://127.0.0.1:8765/"
 echo.
 echo Website opened at http://127.0.0.1:8765/
+either this URL or the deployed HTTPS site should be used for Firebase login testing.
+Do NOT open index.html by double-clicking it.
 echo To stop the local server, close the server command window or press Ctrl+C there.
 echo When you edit the Excel workbook, save it in this SAME folder and press Ctrl+F5 in the browser.
 pause
