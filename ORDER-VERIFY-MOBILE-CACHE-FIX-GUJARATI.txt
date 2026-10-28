@@ -15,3 +15,9 @@ PC/GitHub deployment:
 Testing મર્યાદા:
 - JavaScript syntax અને ZIP integrity offline ચકાસી શકાય છે.
 - Actual Android Mobile_1 પર live Google Apps Script verification આ environment માં ચલાવીને ચકાસી શકાતી નથી.
+
+
+નવી Endpoint Configuration (27-10-2026):
+script.js માં GOOGLE_SCRIPT_URL હવે અપડેટ કરેલ Google Apps Script Web App /exec URL પર સેટ છે. GitHub પર Deploy કર્યા પછી URL અને Code.gs બંને એક જ deployment version ના હોવાની ખાતરી કરો.
+
+નવી Cache Version: order-verify-new-endpoint-20261027-3

@@ -4,7 +4,7 @@
  * The validated workbook replaces this snapshot without a page reload.
  * Keep the current Apps Script order contract and pincode data source intact.
  */
-const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbw2zrWdILyGqxzopd3LHeiU6crc1JmPeM22xk7JBHpzRpLzy6ET4NTyJbFzmEOX-2b4Tg/exec";
+const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxPsHY0RqbTyBaTmi95OtzDJiFJPnPt72KBXOOyRvyxR-JPkanX3ivqNa8wP4wjaawWbQ/exec";
 const CURRENCY = "INR";
 const PINCODE_DATA = window.KAILU_PINCODE_DATA || Object.create(null);
 const SIZE_ORDER = ["S", "M", "L", "XL", "XXL", "3XL"];
@@ -938,63 +938,150 @@ function clientRequestId() {
   return pendingClientOrderId;
 }
 
-function verifyOrderSaved(requestId, maxAttempts = 4) {
-  return new Promise(async resolve => {
-    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-      const response = await new Promise(done => {
-        const callbackName = `kailuOrderVerify_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
-        const script = document.createElement("script");
-        let settled = false;
-        let missingCallbackTimer = 0;
-        const finish = value => {
-          if (settled) return;
-          settled = true;
-          clearTimeout(timeout);
-          clearTimeout(missingCallbackTimer);
-          try { delete window[callbackName]; } catch (_) { window[callbackName] = undefined; }
-          script.remove();
-          done(value);
-        };
-        window[callbackName] = data => finish(data && typeof data === "object" ? data : null);
-        script.onerror = () => finish({
-          ok: false, pending: true, code: "VERIFY_ENDPOINT_LOAD_FAILED",
-          message: "Google Apps Script verification could not load. Check the deployed Web App URL, access permissions, and latest deployment version. Do not submit the order again yet."
+function verifyOrderSavedJsonp(requestId, attempt) {
+  return new Promise(resolve => {
+    const callbackName = `kailuOrderVerify_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+    const script = document.createElement("script");
+    let settled = false;
+    let missingCallbackTimer = 0;
+
+    const finish = value => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      clearTimeout(missingCallbackTimer);
+      try { delete window[callbackName]; } catch (_) { window[callbackName] = undefined; }
+      script.remove();
+      resolve(value);
+    };
+
+    window[callbackName] = data => finish(data && typeof data === "object" ? data : null);
+    script.onerror = () => finish({
+      ok: false,
+      pending: true,
+      code: "VERIFY_ENDPOINT_LOAD_FAILED",
+      message: "JSONP verification could not load in this browser."
+    });
+
+    // Older mobile browsers can report script.onerror on the Apps Script redirect,
+    // even though the same Web App is reachable in a normal tab. Keep this request
+    // short and use the iframe/postMessage transport below as a compatibility fallback.
+    const timeout = setTimeout(() => finish({
+      ok: false, pending: true, code: "VERIFY_JSONP_TIMEOUT",
+      message: "The Apps Script JSONP check timed out."
+    }), 6500);
+
+    script.onload = () => {
+      missingCallbackTimer = setTimeout(() => {
+        if (!settled) finish({
+          ok: false,
+          pending: true,
+          code: "VERIFY_CALLBACK_MISSING",
+          message: "The published Apps Script did not return the verification callback."
         });
-        // Apps Script can cold-start and read the Sheet/ledger; 1.8 seconds caused
-        // false failures even after doPost had saved the order successfully.
-        const timeout = setTimeout(() => finish(null), 6500);
-        // An older deployed version may return the generic endpoint text without
-        // invoking the JSONP callback. Detect that separately from a slow response.
-        script.onload = () => {
-          missingCallbackTimer = setTimeout(() => {
-            if (!settled) finish({
-              ok: false, pending: true, code: "VERIFY_CALLBACK_MISSING",
-              message: "The published Apps Script did not return the order-verification callback. Deploy the latest Code.gs as a New version to the existing Web App deployment. The order may already be saved; check its status before retrying."
-            });
-          }, 250);
-        };
-        const url = new URL(GOOGLE_SCRIPT_URL);
-        url.searchParams.set("action", "verify");
-        url.searchParams.set("clientRequestId", requestId);
-        url.searchParams.set("callback", callbackName);
-        url.searchParams.set("_", `${Date.now()}-${attempt}`);
-        script.src = url.toString();
-        document.head.appendChild(script);
-      });
-      if (response?.ok === true && response.orderId) return resolve(response);
-      // Retry transient verification load failures. This loop only verifies status; it never re-posts an order.
-      if (response?.code === "VERIFY_CALLBACK_MISSING" || response?.code === "VERIFY_ENDPOINT_LOAD_FAILED") {
-        if (attempt < maxAttempts - 1) {
-          await new Promise(done => setTimeout(done, 700 * (attempt + 1)));
-          continue;
-        }
-        return resolve(response);
-      }
-      if (response && response.pending !== true && response.message) return resolve(response);
-      if (attempt < maxAttempts - 1) await new Promise(done => setTimeout(done, 350 * (attempt + 1)));
-    }
-    resolve({ ok: false, pending: true, message: "We still could not confirm whether the order was saved. Do not place it again yet. Check Order Status again or check the Orders sheet." });
+      }, 350);
+    };
+
+    const url = new URL(GOOGLE_SCRIPT_URL);
+    url.searchParams.set("action", "verify");
+    url.searchParams.set("clientRequestId", requestId);
+    url.searchParams.set("callback", callbackName);
+    url.searchParams.set("_", `${Date.now()}-${attempt}`);
+    script.src = url.toString();
+    document.head.appendChild(script);
   });
+}
+
+function verifyOrderSavedViaFrame(requestId, timeoutMs = 9000) {
+  return new Promise(resolve => {
+    const nonce = `${Date.now()}_${Math.random().toString(36).slice(2, 12)}`;
+    const frame = document.createElement("iframe");
+    frame.title = "KAILU order verification";
+    frame.setAttribute("aria-hidden", "true");
+    frame.tabIndex = -1;
+    frame.style.cssText = "position:fixed;left:-10000px;top:0;width:1px;height:1px;border:0;opacity:0;pointer-events:none;";
+
+    let settled = false;
+    const isTrustedAppsScriptOrigin = origin => {
+      try {
+        const host = new URL(origin).hostname.toLowerCase();
+        return host === "script.google.com" ||
+          host === "script.googleusercontent.com" ||
+          host.endsWith("-script.googleusercontent.com");
+      } catch (_) {
+        return false;
+      }
+    };
+
+    const cleanup = () => {
+      clearTimeout(timer);
+      window.removeEventListener("message", onMessage);
+      try { frame.remove(); } catch (_) {}
+    };
+    const finish = result => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve(result);
+    };
+    const onMessage = event => {
+      if (event.source !== frame.contentWindow || !isTrustedAppsScriptOrigin(event.origin)) return;
+      const data = event.data;
+      if (!data || data.type !== "KAILU_ORDER_VERIFY_RESULT") return;
+      if (data.requestId !== requestId || data.nonce !== nonce) return;
+      finish(data.result && typeof data.result === "object" ? data.result : null);
+    };
+
+    window.addEventListener("message", onMessage);
+    const timer = setTimeout(() => finish({
+      ok: false,
+      pending: true,
+      code: "VERIFY_FRAME_TIMEOUT",
+      message: "The order may already be saved, but this browser did not receive the verification reply. Do not submit the order again."
+    }), timeoutMs);
+
+    const url = new URL(GOOGLE_SCRIPT_URL);
+    url.searchParams.set("action", "verifyFrame");
+    url.searchParams.set("clientRequestId", requestId);
+    url.searchParams.set("nonce", nonce);
+    url.searchParams.set("_", `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`);
+    frame.src = url.toString();
+    (document.body || document.documentElement).appendChild(frame);
+  });
+}
+
+async function verifyOrderSaved(requestId, maxAttempts = 2) {
+  let lastResponse = null;
+
+  // Try the existing lightweight JSONP transport first. It continues to work on
+  // modern browsers and does not require CORS from Apps Script.
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    const response = await verifyOrderSavedJsonp(requestId, attempt);
+    if (response?.ok === true && response.orderId) return response;
+
+    // A definite backend response should be handled as-is; don't use a fallback
+    // transport to disguise a real rejection or a server-side verification error.
+    if (response && response.pending !== true && response.message) return response;
+
+    lastResponse = response;
+    if (attempt < maxAttempts - 1) {
+      await new Promise(done => setTimeout(done, 250 * (attempt + 1)));
+    }
+  }
+
+  // Cross-browser fallback: a hidden iframe receives the Apps Script HTML
+  // response and relays a read-only status message using postMessage. This never
+  // posts another order and requires the updated Code.gs verifyFrame action.
+  const frameResponse = await verifyOrderSavedViaFrame(requestId);
+  if (frameResponse?.ok === true && frameResponse.orderId) return frameResponse;
+  if (frameResponse && frameResponse.pending !== true && frameResponse.message) return frameResponse;
+
+  return {
+    ok: false,
+    pending: true,
+    code: "VERIFY_TRANSPORTS_FAILED",
+    message: "The order may already be saved, but this browser could not complete Google Apps Script verification. Do not place the order again. Use Check Order Status or inspect the Orders sheet. If this repeats, update and redeploy the supplied Code.gs."
+  };
 }
 
 function completeOrderSuccess(orderId) {

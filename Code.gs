@@ -13,39 +13,84 @@ const HEADERS = [
 
 function doGet(e) {
   const p = (e && e.parameter) ? e.parameter : {};
-  // JSONP verification is read-only and lets the website confirm a saved row
-  // without relying on an opaque no-cors POST response.
-  if (String(p.action || "") === "verify" && String(p.clientRequestId || "").trim()) {
+  const action = String(p.action || "");
+  const clientRequestId = String(p.clientRequestId || "").trim();
+
+  // Both transports are read-only. JSONP is the primary path; verifyFrame is a
+  // compatibility path for older mobile browsers that report script.onerror on
+  // the Apps Script redirect.
+  if ((action === "verify" || action === "verifyFrame") && clientRequestId) {
+    const response = getOrderVerificationResult_(clientRequestId);
+
+    if (action === "verifyFrame") {
+      const nonce = String(p.nonce || "");
+      if (!/^[A-Za-z0-9_-]{1,100}$/.test(nonce)) {
+        return HtmlService.createHtmlOutput("Invalid verification nonce.");
+      }
+
+      const message = {
+        type: "KAILU_ORDER_VERIFY_RESULT",
+        requestId: clientRequestId,
+        nonce: nonce,
+        result: response
+      };
+      // Escape HTML-sensitive characters before embedding JSON into an inline
+      // script; response strings must never be able to close this script element.
+      const messageJson = JSON.stringify(message)
+        .replace(/</g, "\\u003c")
+        .replace(/>/g, "\\u003e")
+        .replace(/&/g, "\\u0026")
+        .replace(/\u2028/g, "\\u2028")
+        .replace(/\u2029/g, "\\u2029");
+      const html = '<!doctype html><html><head><meta charset="utf-8"></head><body>' +
+        '<script>(function(){var m=' + messageJson +
+        ';try{if(window.parent&&window.parent!==window){window.parent.postMessage(m,"*");}}catch(e){}})();<\/script>' +
+        '</body></html>';
+      return HtmlService.createHtmlOutput(html)
+        .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+    }
+
     const callback = String(p.callback || "");
     if (!/^kailuOrderVerify_[A-Za-z0-9_]+$/.test(callback)) {
       return ContentService.createTextOutput("Invalid verification callback.");
     }
-    let response = { ok: false, pending: true, code: "ORDER_PENDING", message: "Order save is not confirmed yet." };
-    try {
-      const cachedResult = CacheService.getScriptCache().get(requestCacheKey_(p.clientRequestId));
-      if (cachedResult) {
-        try { response = JSON.parse(cachedResult); }
-        catch (_) { response = { ok: true, orderId: cachedResult }; }
-      }
-      // CacheService can evict entries. The persistent ledger makes confirmation
-      // and duplicate protection survive cache expiry and page reloads.
-      if (!response || response.ok !== true) {
-        const ledgerResult = findRequestLedger_(p.clientRequestId);
-        if (ledgerResult && ledgerResult.ok === true) response = ledgerResult;
-      }
-    } catch (verifyError) {
-      console.error("Order verification failed:", verifyError);
-      response = {
-        ok: false, pending: true, code: "VERIFY_SERVER_ERROR",
-        message: "Order verification temporarily failed on the Apps Script server. The order may already be saved; do not submit it again yet."
-      };
-    }
-    // Always return the JSONP callback for valid requests, even on an internal
-    // verification error, so the frontend can show a useful diagnostic.
     return ContentService.createTextOutput(callback + "(" + JSON.stringify(response) + ");")
       .setMimeType(ContentService.MimeType.JAVASCRIPT);
   }
+
   return ContentService.createTextOutput("KAILU CREATION order endpoint is running.");
+}
+
+function getOrderVerificationResult_(clientRequestId) {
+  let response = {
+    ok: false,
+    pending: true,
+    code: "ORDER_PENDING",
+    message: "Order save is not confirmed yet."
+  };
+  try {
+    const cachedResult = CacheService.getScriptCache().get(requestCacheKey_(clientRequestId));
+    if (cachedResult) {
+      try { response = JSON.parse(cachedResult); }
+      catch (_) { response = { ok: true, orderId: cachedResult }; }
+    }
+
+    // CacheService can evict entries. The persistent ledger makes confirmation
+    // and duplicate protection survive cache expiry and page reloads.
+    if (!response || response.ok !== true) {
+      const ledgerResult = findRequestLedger_(clientRequestId);
+      if (ledgerResult && ledgerResult.ok === true) response = ledgerResult;
+    }
+  } catch (verifyError) {
+    console.error("Order verification failed:", verifyError);
+    response = {
+      ok: false,
+      pending: true,
+      code: "VERIFY_SERVER_ERROR",
+      message: "Order verification temporarily failed on the Apps Script server. The order may already be saved; do not submit it again yet."
+    };
+  }
+  return response;
 }
 
 // Run this once manually after updating the script to migrate/prepare the existing tab.

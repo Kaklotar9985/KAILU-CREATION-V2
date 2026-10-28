@@ -1,0 +1,74 @@
+KAILU CREATION V2 — Mobile-1 Order Verification Fix
+=====================================================
+
+મૂળ કારણ: V1 અને V2 વચ્ચેનો તફાવત
+-----------------------------------
+Old V1 માં fetch(..., mode:"no-cors") પૂર્ણ થાય એટલે Success Popup ખૂલતું હતું.
+આથી popup દેખાવું એ Google Sheetમાં Order save થયાનો પુરાવો નહોતો.
+
+V2 માં Order ID verify થયા પછી જ Success Popup ખૂલે છે. V2 verification માટે
+cross-origin JSONP <script> request વાપરે છે. Mobile-1 પર આ script request
+onerror આપે છે, એટલે frontend ને verification callback મળતો નથી—જ્યારે POSTથી
+Order Sheetમાં save થયેલો હોઈ શકે છે. આ transport incompatibility હાલના પુરાવા સાથે
+મેળ ખાય છે. Mobile-1ના Browser Console/Network logs વગર તે ફોન પર ચોક્કસ કારણ
+(જૂનો cache, network/browser block કે redirect handling) નિશ્ચિત કરી શકાતું નથી.
+
+શું બદલ્યું
+----------
+1. script.js
+   - પહેલાંની JSONP verification જાળવી.
+   - JSONP Load/Callback નિષ્ફળ જાય તો hidden iframe + postMessage વડે read-only
+     verification કરવાનો fallback ઉમેર્યો.
+   - એ જ clientRequestId ચકાસાય છે; fallback બીજી વાર Order POST કરતો નથી.
+   - Backend પાસેથી {ok:true, orderId} મળ્યા પછી જ Success Popup ખુલશે.
+   - Duplicate Submission Protection અને Check Order Status જાળવ્યાં.
+
+2. Code.gs અને data/Kailu Creation Orders Detail_Apps Script_Code.gs
+   - action=verifyFrame ઉમેર્યું. તે એ જ cache/request ledgerમાંથી Order Status
+     વાંચીને HTML postMessage response આપે છે.
+   - iframe response માટે HtmlService XFrameOptionsMode.ALLOWALL છે.
+   - હાલનું action=verify JSONP અને Orders Sheetના 17 Columns જાળવ્યા.
+   - બંને Code.gs ફાઇલો સરખી છે.
+
+3. index.html
+   - જૂનો JavaScript cache ટાળવા script.js version બદલ્યું.
+
+Deployment માટે જરૂરી પગલાં
+---------------------------
+A. GitHub:
+   - KAILU-CREATION-V2 Repositoryના ROOTમાં index.html અને script.js Replace કરીને
+     Commit કરો. Extra nested folderમાં Upload ન કરો.
+
+B. Google Apps Script (iframe fallback માટે જરૂરી):
+   - હાલના Order Spreadsheet સાથે જોડાયેલો એ જ Apps Script Project ખોલો.
+   - આ ZIPની root Code.gsનો સંપૂર્ણ કોડ ત્યાં મૂકી Save કરો.
+   - setupOrdersSheet() પહેલાં ચલાવ્યું ન હોય તો જ એક વાર ચલાવો.
+   - Deploy > Manage deployments > હાલના Web Appનું Edit > New version > Deploy.
+   - Execute as: Me રાખો. ગ્રાહક Login વગર Order કરી શકે તે માટે Access: Anyone રાખો.
+   - Deploymentમાંથી Web App /exec URL Copy કરો. તે script.jsના GOOGLE_SCRIPT_URL સાથે
+     એકસરખો હોવો જોઈએ. Packageમાં હાલમાં GitHub પર દેખાતો URL જ છે. Deployment
+     નવો URL આપે તો script.jsમાં એ જ URL મૂકી Commit કરો.
+   - આ જ Apps Script project/deployment update કરો; unrelated Web App ન બનાવો.
+
+C. Deploy પછી:
+   - Mobile-1માં site data clear કરો અથવા નવી tabમાં Website ખોલો.
+   - Test કરતાં પહેલાં Google Sheetમાં જૂના Order તપાસો.
+   - જૂનો Order પહેલેથી save થયો હોય તો Check Order Status વાપરો; ફરી Order ન મૂકો.
+
+આ Buildમાં ખરેખર થયેલી Checks
+-----------------------------
+- આપેલા Old V1 script.js અને V2 script.jsનો Order flow compare કર્યો.
+- V1 opaque no-cors POST પછી verified Order ID વગર Success Popup ખોલે છે તેની પુષ્ટિ.
+- V2 success માટે verified orderId જરૂરી છે; JSONP path script.onerror પર VERIFY_ENDPOINT_LOAD_FAILED આપે છે.
+- Package URL અને cache-busting version ચકાસ્યાં.
+- Node syntax checks: script.js PASS; Code.gs syntax check PASS.
+- Mock transport regression test: JSONP load error પછી iframe postMessageમાં confirmed
+  mock Order ID મળતાં verification PASS.
+- ZIP integrity: PASS; 96 archive entries વાંચી શકાય છે અને બંને Code.gs copies સમાન છે.
+
+હજી ન થયેલા Tests
+-----------------
+આ પર્યાવરણમાં physical Mobile-1/2/3 પર સીધું પરીક્ષણ શક્ય નહોતું. Live Apps Script
+Deploymentથી વાસ્તવિક Order/Google Sheet verification ચલાવ્યું નથી. તેથી Mobile-1,
+Mobile-2, Mobile-3 અને PC પર end-to-end PASS ગણ્યું નથી. Compatibility fallback
+કાર્યરત થવા માટે updated Code.gs ને Web Appના New version તરીકે deploy કરવું ફરજિયાત છે.
