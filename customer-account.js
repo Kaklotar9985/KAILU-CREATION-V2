@@ -25,6 +25,19 @@ const localPinData = window.KAILU_PINCODE_DATA || Object.create(null);
 let app = null, auth = null, db = null, currentUser = null;
 let authReady = false, activeTab = "profile", currentAddresses = [], currentWishlist = [], currentOrders = [];
 let statusMessage = "", statusType = "info", addressBeingEdited = null, loginBusy = false;
+let authInitialStateTimer = null;
+let accountRenderVersion = 0;
+
+// Keep account UI responsive if Firebase/Firestore network requests never settle.
+function withTimeout(promise, milliseconds, message) {
+  let timer = null;
+  return Promise.race([
+    Promise.resolve(promise),
+    new Promise((_, reject) => {
+      timer = window.setTimeout(() => reject(new Error(message)), milliseconds);
+    })
+  ]).finally(() => { if (timer !== null) window.clearTimeout(timer); });
+}
 
 function buildModal() {
   if (document.getElementById("kailuAccountModal")) return;
@@ -128,8 +141,18 @@ function renderAccountUI() {
     </nav>
     <div class="ka-account-content" id="kaTabContent">${renderTabLoading(activeTab)}</div>
     ${statusMarkup()}`;
-  renderCurrentTab().catch(error => {
+  const renderVersion = ++accountRenderVersion;
+  withTimeout(
+    renderCurrentTab(),
+    12000,
+    "Your account is signed in, but saved information is taking too long to load. Check Firestore access and your internet connection, then use Retry."
+  ).catch(error => {
     console.error("KAILU Account tab error:", error);
+    if (renderVersion !== accountRenderVersion) return;
+    const target = document.getElementById("kaTabContent");
+    if (target) {
+      target.innerHTML = `<section class="ka-tab-pane"><div class="ka-pane-heading"><h2>Account data could not be loaded</h2></div><div class="ka-warning-card"><p>${h(readableError(error))}</p><button type="button" class="ka-primary-button" data-ka-retry-tab>Retry</button></div></section>`;
+    }
     setStatus(readableError(error), "error");
   });
 }
@@ -623,6 +646,7 @@ async function handleModalClick(event) {
     catch (error) { setStatus(readableError(error), "error"); }
     return;
   }
+  if (button.matches("[data-ka-retry-tab]")) { renderAccountUI(); return; }
   if (button.matches("[data-ka-refresh-orders]")) { await renderCurrentTab(); return; }
   if (button.matches("[data-ka-remove-wishlist]")) {
     try {
@@ -709,6 +733,45 @@ function updateHeaderButton() {
   accountButton.classList.toggle("is-signed-in", Boolean(currentUser));
 }
 
+async function initializeSignedInCustomer(user) {
+  try {
+    await withTimeout(
+      ensureCustomerProfile(user),
+      10000,
+      "Google sign-in succeeded, but Firestore did not respond in time. Check Firestore Security Rules and network access."
+    );
+  } catch (error) {
+    console.error("KAILU Customer profile initialization:", error);
+    if (auth?.currentUser?.uid === user.uid) {
+      setStatus(readableError(error), "error");
+    }
+    // Do not block Login/My Account because profile storage is unavailable.
+    return;
+  }
+
+  try {
+    if (activeTab === "addresses") {
+      const addresses = await withTimeout(
+        getDocs(collection(db, "users", user.uid, "addresses")),
+        8000,
+        "Saved addresses took too long to load."
+      );
+      const defaults = addresses.docs.map(d => d.data()).find(a => a.isDefault) || addresses.docs[0]?.data() || null;
+      if (defaults) await fillCheckoutAddress(defaults);
+    } else {
+      const profile = await withTimeout(
+        getDoc(doc(db, "users", user.uid)),
+        8000,
+        "Customer profile took too long to load."
+      );
+      if (profile.exists()) await fillCheckoutAddress(null, profile.data());
+    }
+  } catch (error) {
+    console.warn("KAILU checkout address prefill skipped:", error);
+    // This is optional checkout prefill; it must not lock Customer Account UI.
+  }
+}
+
 if (firebaseConfigured) {
   try {
     app = getApps().find(item => item.name === "kailuCustomerAccount") || initializeApp(CONFIG, "kailuCustomerAccount");
@@ -723,29 +786,32 @@ if (firebaseConfigured) {
       statusType = "error";
       if (!document.getElementById("kailuAccountModal")?.hidden) renderAccountUI();
     });
-    onAuthStateChanged(auth, async user => {
-      currentUser = user;
-      authReady = !user;
+    // A slow Firestore profile read must never block the whole account panel.
+    // The watchdog also prevents an infinite first-load spinner if Firebase Auth
+    // cannot finish restoring the browser session (offline/network/browser issue).
+    authInitialStateTimer = window.setTimeout(() => {
+      if (authReady) return;
+      currentUser = auth?.currentUser || null;
+      authReady = true;
+      statusMessage = currentUser
+        ? "Your Google session was found, but Firebase is taking longer than usual. Account data may need a retry."
+        : "Firebase could not confirm your session yet. Check your internet connection and try again.";
+      statusType = "error";
       updateHeaderButton();
-      if (user) {
-        try {
-          await ensureCustomerProfile(user);
-          if (activeTab === "addresses") {
-            const addresses = await getDocs(collection(db, "users", user.uid, "addresses"));
-            const defaults = addresses.docs.map(d => d.data()).find(a => a.isDefault) || addresses.docs[0]?.data() || null;
-            if (defaults) await fillCheckoutAddress(defaults);
-          } else {
-            const profile = await getDoc(doc(db, "users", user.uid));
-            if (profile.exists()) await fillCheckoutAddress(null, profile.data());
-          }
-        } catch (error) {
-          console.error("KAILU Customer profile initialization:", error);
-          statusMessage = readableError(error); statusType = "error";
-        }
+      if (!document.getElementById("kailuAccountModal")?.hidden) renderAccountUI();
+    }, 10000);
+
+    onAuthStateChanged(auth, user => {
+      if (authInitialStateTimer !== null) {
+        window.clearTimeout(authInitialStateTimer);
+        authInitialStateTimer = null;
       }
+      currentUser = user;
+      // Mark auth as ready immediately; profile and checkout prefill run separately.
       authReady = true;
       updateHeaderButton();
       if (!document.getElementById("kailuAccountModal")?.hidden) renderAccountUI();
+      if (user) initializeSignedInCustomer(user);
     });
   } catch (error) {
     console.error("KAILU Firebase initialization failed:", error);
