@@ -1,0 +1,39 @@
+KAILU CREATION V2 — ADDRESS BOOK / ORDER HISTORY / WISHLIST SPINNER FIX
+=========================================================================
+
+PROBLEM SEEN IN THE SCREENSHOTS
+--------------------------------
+The Google account is signed in, but the Account modal keeps showing “Loading saved information…” on Address Book, Order History, and Wishlist.
+
+CODE FIX INCLUDED
+-----------------
+- Address Book Firestore read has an 8-second limit. If the SDK never completes the request, the spinner is replaced by an error message and Retry button.
+- Wishlist Firestore read has the same 8-second limit.
+- Order History Apps Script iframe request has a 12-second limit and displays a Retry/error state.
+- Each tab has a render sequence guard. A slow response from an old tab cannot replace the newly selected tab.
+- Customer Profile keeps Google display name/email/photo available when profile Firestore read fails.
+- The JavaScript URL version has been bumped so the browser requests the latest account module.
+
+IMPORTANT
+---------
+This makes the interface stop spinning indefinitely. It does not bypass Firestore security or fix a database that is not created/reachable.
+
+IF FIRESTORE WARNINGS CONTINUE
+------------------------------
+1. In Firebase Console, select project “KAILU CREATION” (project ID kailu-creation).
+2. Go to Build → Firestore Database and confirm the database is actually created.
+3. Go to Firestore Database → Rules and publish owner-only rules matching the included firestore.rules, after reviewing/merging them with your current rules.
+4. Never publish allow read, write: if true; this would expose customer details.
+5. On the deployed V2 site press F12 → Console and Network. Reproduce the error and capture the exact Firebase error code and request status.
+6. If you see permission-denied, fix Rules; if unavailable or network errors, inspect internet/VPN/extensions/firewall; if failed-precondition/not-found, check that Firestore is created in this exact Firebase project.
+
+DEPLOYMENT
+----------
+- Extract the full ZIP.
+- Upload the files from KAILU-CREATION-V2-main to the root of repository KAILU-CREATION-V2 and commit.
+- Do not upload this package to V1 and do not add a CNAME for kailucreation.in to V2; V1 owns that custom domain.
+- Wait for GitHub Pages deployment, then open https://kaklotar9985.github.io/KAILU-CREATION-V2/ and press Ctrl+F5.
+
+VERIFICATION STATUS
+-------------------
+Static syntax and archive checks were run. Actual authenticated browser tests against the owner's Firebase project were not run from this environment. After deployment, test Google sign-in, profile save, address save/edit/delete/default, wishlist add/remove, and order history. COD placement must never imply payment has been received.

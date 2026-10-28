@@ -26,7 +26,7 @@ let app = null, auth = null, db = null, currentUser = null;
 let authReady = false, activeTab = "profile", currentAddresses = [], currentWishlist = [], currentOrders = [];
 let statusMessage = "", statusType = "info", addressBeingEdited = null, loginBusy = false;
 let authInitialStateTimer = null;
-let accountRenderVersion = 0;
+let tabRenderSequence = 0;
 
 // Keep account UI responsive if Firebase/Firestore network requests never settle.
 function withTimeout(promise, milliseconds, message) {
@@ -141,35 +141,44 @@ function renderAccountUI() {
     </nav>
     <div class="ka-account-content" id="kaTabContent">${renderTabLoading(activeTab)}</div>
     ${statusMarkup()}`;
-  const renderVersion = ++accountRenderVersion;
-  withTimeout(
-    renderCurrentTab(),
-    12000,
-    "Your account is signed in, but saved information is taking too long to load. Check Firestore access and your internet connection, then use Retry."
-  ).catch(error => {
-    console.error("KAILU Account tab error:", error);
-    if (renderVersion !== accountRenderVersion) return;
-    const target = document.getElementById("kaTabContent");
-    if (target) {
-      target.innerHTML = `<section class="ka-tab-pane"><div class="ka-pane-heading"><h2>Account data could not be loaded</h2></div><div class="ka-warning-card"><p>${h(readableError(error))}</p><button type="button" class="ka-primary-button" data-ka-retry-tab>Retry</button></div></section>`;
-    }
-    setStatus(readableError(error), "error");
-  });
+  // renderCurrentTab owns its timeout/error UI, so a rejected Firestore read can
+  // never leave a permanent spinner or an unhandled Promise rejection.
+  renderCurrentTab();
 }
 
 function renderTabLoading(tab) {
   return `<section class="ka-tab-pane"><div class="ka-pane-heading"><h2>${h(({profile:"Customer Profile",addresses:"Address Book",orders:"Order History",wishlist:"My Wishlist"})[tab] || "My Account")}</h2></div><div class="ka-loading compact"><span class="ka-spinner"></span><p>Loading saved information…</p></div></section>`;
 }
 
+function isCurrentTabRender(target, sequence, tab) {
+  return sequence === tabRenderSequence && tab === activeTab &&
+    target?.isConnected && target === document.getElementById("kaTabContent");
+}
+
+function tabErrorMarkup(tab, error) {
+  const labels = {profile:"Customer Profile", addresses:"Address Book", orders:"Order History", wishlist:"Wishlist"};
+  const help = tab === "profile" ? profileReadHelp(error) : readableError(error);
+  return `<section class="ka-tab-pane"><div class="ka-pane-heading"><h2>${h(labels[tab] || "My Account")} could not be loaded</h2></div><div class="ka-warning-card" role="status"><strong>Your account is still signed in.</strong><p>${h(help)}</p><p>Loading has stopped. Check Firestore Database/Rules and your internet connection, then retry.</p><button type="button" class="ka-primary-button" data-ka-retry-tab>Retry</button></div></section>`;
+}
+
 async function renderCurrentTab() {
   if (!db || !currentUser) return;
   const target = document.getElementById("kaTabContent");
   if (!target) return;
-  target.innerHTML = renderTabLoading(activeTab);
-  if (activeTab === "profile") await renderProfile(target);
-  else if (activeTab === "addresses") await renderAddressBook(target);
-  else if (activeTab === "orders") await renderOrderHistory(target);
-  else if (activeTab === "wishlist") await renderWishlist(target);
+  const tab = activeTab;
+  const sequence = ++tabRenderSequence;
+  target.innerHTML = renderTabLoading(tab);
+  try {
+    if (tab === "profile") await renderProfile(target, sequence);
+    else if (tab === "addresses") await renderAddressBook(target, sequence);
+    else if (tab === "orders") await renderOrderHistory(target, sequence);
+    else if (tab === "wishlist") await renderWishlist(target, sequence);
+  } catch (error) {
+    console.error(`KAILU ${tab} tab load failed:`, error?.code || error);
+    if (!isCurrentTabRender(target, sequence, tab)) return;
+    target.innerHTML = tabErrorMarkup(tab, error);
+    setStatus(readableError(error), "error");
+  }
 }
 
 async function ensureCustomerProfile(user) {
@@ -266,7 +275,7 @@ function profileReadHelp(error) {
   return readableError(error) + " If this continues, check F12 → Console and Firestore Rules in Firebase Console.";
 }
 
-async function renderProfile(target) {
+async function renderProfile(target, sequence) {
   let profile = {};
   let profileReadError = null;
   try {
@@ -282,6 +291,7 @@ async function renderProfile(target) {
     profileReadError = error;
     console.warn("KAILU CREATION profile read failed:", error?.code || error);
   }
+  if (!isCurrentTabRender(target, sequence, "profile")) return;
   const createdAt = profile.createdAt?.toDate?.() || (currentUser.metadata?.creationTime ? new Date(currentUser.metadata.creationTime) : null);
   const createdLabel = createdAt && !Number.isNaN(createdAt.getTime()) ? createdAt.toLocaleDateString("en-IN", {day:"2-digit",month:"short",year:"numeric"}) : "Not available";
   const profileWarning = profileReadError ? `<div class="ka-warning-card" role="status"><strong>Google sign-in succeeded, but saved profile data could not be read.</strong><p>${h(profileReadHelp(profileReadError))}</p><button type="button" class="ka-outline-button" data-ka-retry-tab>Retry loading profile</button></div>` : "";
@@ -337,8 +347,13 @@ async function renderProfile(target) {
   });
 }
 
-async function renderAddressBook(target) {
-  const snap = await getDocs(collection(db, "users", currentUser.uid, "addresses"));
+async function renderAddressBook(target, sequence) {
+  const snap = await withTimeout(
+    getDocs(collection(db, "users", currentUser.uid, "addresses")),
+    8000,
+    "Address Book took too long to load from Firestore. Check the database, Rules, and network, then retry."
+  );
+  if (!isCurrentTabRender(target, sequence, "addresses")) return;
   currentAddresses = snap.docs.map(item => ({ id: item.id, ...item.data() })).sort((a,b) => Number(b.isDefault) - Number(a.isDefault));
   target.innerHTML = `
     <section class="ka-tab-pane"><div class="ka-pane-heading"><div><h2>Address Book</h2><p>Manage multiple delivery addresses. PIN data uses the existing website serviceability list.</p></div><button type="button" class="ka-primary-button" data-ka-address-new>＋ Add Address</button></div>
@@ -486,7 +501,22 @@ async function deleteAddress(addressId) {
 }
 
 async function fillCheckoutAddress(address, profile = null) {
-  const profileValues = profile || (db && currentUser ? (await getDoc(currentProfileDoc())).data() || {} : {});
+  // Checkout prefill is optional: it must never hold up the account tabs if a
+  // second profile read is slow or denied. The address/profile editor still
+  // reports its own required read/write errors separately.
+  let profileValues = profile || {};
+  if (!profile && db && currentUser) {
+    try {
+      const profileSnap = await withTimeout(
+        getDoc(currentProfileDoc()),
+        5000,
+        "Optional checkout profile prefill timed out."
+      );
+      profileValues = profileSnap.exists() ? profileSnap.data() : {};
+    } catch (error) {
+      console.warn("KAILU optional checkout profile prefill skipped:", error?.code || error);
+    }
+  }
   const values = {
     customerName: address?.fullName || profileValues.displayName || currentUser?.displayName || "",
     mobileNumber: address?.mobileNumber || profileValues.phoneNumber || "",
@@ -552,8 +582,13 @@ function decorateProductCards() {
   });
 }
 
-async function renderWishlist(target) {
-  const snap = await getDocs(collection(db, "users", currentUser.uid, "wishlist"));
+async function renderWishlist(target, sequence) {
+  const snap = await withTimeout(
+    getDocs(collection(db, "users", currentUser.uid, "wishlist")),
+    8000,
+    "Wishlist took too long to load from Firestore. Check the database, Rules, and network, then retry."
+  );
+  if (!isCurrentTabRender(target, sequence, "wishlist")) return;
   currentWishlist = snap.docs.map(item => ({id:item.id, ...item.data()}));
   const currentProducts = window.KAILU_PRODUCT_CATALOG || [];
   target.innerHTML = `<section class="ka-tab-pane"><div class="ka-pane-heading"><div><h2>My Wishlist</h2><p>Products saved to your Google-linked customer account.</p></div></div>
@@ -578,15 +613,15 @@ async function renderWishlist(target) {
   });
 }
 
-async function renderOrderHistory(target) {
+async function renderOrderHistory(target, sequence) {
   target.innerHTML = `<section class="ka-tab-pane"><div class="ka-pane-heading"><div><h2>Order History</h2><p>Only orders whose Firebase UID was verified by the order backend appear here.</p></div><button type="button" class="ka-outline-button" data-ka-refresh-orders>Refresh</button></div><div class="ka-loading compact"><span class="ka-spinner"></span><p>Verifying your account and loading orders…</p></div></section>`;
   try {
     const idToken = await currentUser.getIdToken();
     const response = await requestCustomerOrders(idToken);
     if (!response?.ok) throw new Error(response?.message || "The order server could not verify this account.");
+    if (!isCurrentTabRender(target, sequence, "orders")) return;
     currentOrders = Array.isArray(response.orders) ? response.orders : [];
-    const pane = document.getElementById("kaTabContent");
-    if (!pane) return;
+    const pane = target;
     pane.innerHTML = `<section class="ka-tab-pane"><div class="ka-pane-heading"><div><h2>Order History</h2><p>Orders are matched by verified Firebase UID, not just by email address.</p></div><button type="button" class="ka-outline-button" data-ka-refresh-orders>Refresh</button></div>
       ${currentOrders.length ? `<div class="ka-orders-list">${currentOrders.map(orderCardMarkup).join("")}</div>` : `<div class="ka-empty"><span>▤</span><strong>No linked orders found</strong><p>New orders placed while signed in with Google will appear when the updated Google Apps Script backend is deployed. Older orders without a verified UID are not automatically assigned to an account.</p><button type="button" class="ka-primary-button" data-ka-shop-now>Shop Catalogs</button></div>`}
       </section>`;
@@ -603,7 +638,8 @@ async function renderOrderHistory(target) {
     });
   } catch (error) {
     console.error("KAILU Order History:", error);
-    target.innerHTML = `<section class="ka-tab-pane"><div class="ka-pane-heading"><div><h2>Order History</h2><p>Your order data was not returned because the server verification did not complete.</p></div><button type="button" class="ka-outline-button" data-ka-refresh-orders>Retry</button></div><div class="ka-warning-card"><strong>Order History setup or connection issue</strong><p>${h(readableError(error))}</p><p>Update and redeploy the existing Google Apps Script, then add the Firebase Web API Key to Script Properties as <code>FIREBASE_WEB_API_KEY</code>.</p></div></section>`;
+    if (!isCurrentTabRender(target, sequence, "orders")) return;
+    target.innerHTML = `<section class="ka-tab-pane"><div class="ka-pane-heading"><div><h2>Order History could not be loaded</h2><p>Your account is still signed in; only verified UID-matched orders are shown.</p></div><button type="button" class="ka-outline-button" data-ka-refresh-orders>Retry</button></div><div class="ka-warning-card" role="status"><strong>Order History connection/setup issue</strong><p>${h(readableError(error))}</p><p>Check the existing Google Apps Script deployment and its <code>FIREBASE_WEB_API_KEY</code> Script Property. The request has stopped; it will not spin forever.</p></div></section>`;
   }
 }
 
@@ -647,7 +683,7 @@ function requestCustomerOrders(idToken) {
       if (!trustedGoogleOrigin || event.source !== frame.contentWindow || !event.data || event.data.type !== "KAILU_CUSTOMER_ORDERS_RESULT" || event.data.nonce !== nonce) return;
       finish(null, event.data.result);
     };
-    const timer = setTimeout(() => finish(new Error("Order History request timed out. Check that the updated Google Apps Script was deployed as a web app.")), 25000);
+    const timer = setTimeout(() => finish(new Error("Order History request timed out after 12 seconds. Check that the updated Google Apps Script was deployed as a web app.")), 12000);
     window.addEventListener("message", onMessage);
     document.body.append(frame, form);
     try { form.submit(); } catch (error) { finish(error); }
